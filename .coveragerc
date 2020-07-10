@@ -1,2 +1,7 @@
 [run]
 source=pokeman
+
+[report]
+exclude_lines =
+    # pragma: no cover
+    pass

@@ -95,7 +95,7 @@ class AbstractConnection(ABC):
         """
         Abstract connect method.
         """
-        pass
+        pass  # pragma:
 
     @abstractmethod
     def disconnect(self, connection):

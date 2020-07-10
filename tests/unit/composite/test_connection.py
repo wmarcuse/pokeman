@@ -46,20 +46,33 @@ class BasicConnectionTests(unittest.TestCase):
         self.basic_connection = connection.BasicConnection(
             connstr='amqp://guest:guest@localhost:5672',
             method=connection.ConnectionType.URL,
-            username='guest',
-            password='guest',
             config=self.basic_config
         )
 
     def test_base_name(self):
         self.assertEqual(connection.BasicConnection.__name__, 'BasicConnection')
 
-    def test_base_initialization(self):
+    def test_base_initialization_url(self):
         self.assertEqual(self.basic_connection._connection_string, 'amqp://guest:guest@localhost:5672')
         self.assertEqual(self.basic_connection._method, connection.ConnectionType.URL)
         self.assertEqual(self.basic_connection._username, 'guest')
         self.assertEqual(self.basic_connection._password, 'guest')
         self.assertIsInstance(self.basic_connection._config, configs.BasicConfig)
+
+    def test_base_initialization_host(self):
+        self.basic_config = configs.BasicConfig()
+        self.basic_connection_host = connection.BasicConnection(
+            connstr='rabbitmq',
+            method=connection.ConnectionType.HOST,
+            username='admin',
+            password='admin',
+            config=self.basic_config
+        )
+        self.assertEqual(self.basic_connection_host._connection_string, 'rabbitmq')
+        self.assertEqual(self.basic_connection_host._method, connection.ConnectionType.HOST)
+        self.assertEqual(self.basic_connection_host._username, 'admin')
+        self.assertEqual(self.basic_connection_host._password, 'admin')
+        self.assertIsInstance(self.basic_connection_host._config, configs.BasicConfig)
 
     def test__append_url_parameters(self):
         self.assertEqual(
@@ -73,7 +86,7 @@ class BasicConnectionTests(unittest.TestCase):
             'amqp://guest:guest@localhost:5672?connection_attempts=3&heartbeat=3600&retry_delay=1'
         )
 
-    def test_connect_parameters_and_nested_credentials(self):
+    def test_connect_parameters_and_nested_credentials_success(self):
         def mock_parameters(parameters):
             return parameters
 
@@ -86,6 +99,14 @@ class BasicConnectionTests(unittest.TestCase):
             self.assertEqual(connection_parameters._connection_attempts, 3)
             self.assertEqual(connection_parameters._heartbeat, 3600)
             self.assertEqual(connection_parameters._retry_delay, 1)
+
+    def test_connect_parameters_and_nested_credentials_failure(self):
+        def mock_connection_error(parameters):
+            raise Exception('Pokeman connecting to AMQP broker FAILED!')
+
+        with TA.patch(pika, 'BlockingConnection', mock_connection_error):
+            with self.assertRaisesRegex(Exception, 'Pokeman connecting to AMQP broker FAILED!'):
+                self.basic_connection.connect(poker_id='abc')
 
     def test_disconnect(self):
         class ConnectionMock:
