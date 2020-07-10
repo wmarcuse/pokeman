@@ -25,7 +25,7 @@ setup(
     install_requires=required,
     package_data={'': ['LICENSE', 'README.rst']},
     classifiers=[
-        'Development Status :: 3 - Alpha'
+        'Development Status :: 3 - Alpha',
         'Intended Audience :: Developers',
         'License :: OSI Approved :: BSD License',
         'Natural Language :: English',

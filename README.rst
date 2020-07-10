@@ -6,7 +6,6 @@ various instantly deployable service resources like producers and consumers.
 
 The service resources are inspired by the `Enterprise Integration Patterns <https://www.enterpriseintegrationpatterns.com/patterns/messaging/>`_.
 
-|VERSION|
 
 Introduction
 ------------
