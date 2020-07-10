@@ -1,7 +1,8 @@
 Pokeman
 =======
 
-[![Build Status](https://api.travis-ci.org/wmarcuse/pokeman.png?branch=master)](https://api.travis-ci.org/wmarcuse/pokeman)
+|Python versions| |Build status| |Coverage| |License|
+
 
 Pokeman is a RabbitMQ (AMQP 0-9-1) service choreography library for Python, implementing
 various instantly deployable service resources like producers and consumers.
@@ -21,3 +22,13 @@ Pokeman is a service choreography library for Python, currently built on top of 
 # Run tests
 
     docker run -it --rm --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3-management
+
+.. |Python versions| image:: https://img.shields.io/pypi/pyversions/pokeman
+    :target: https://pypi.org/project/pokeman
+
+.. |Build Status| image:: https://api.travis-ci.org/wmarcuse/pokeman.png?branch=master
+  :target: https://api.travis-ci.org/wmarcuse/pokeman
+
+
+.. |Coverage| image:: https://codecov.io/github/wmarcuse/pokeman?branch=master
+  :target: https://github.com/wmarcuse/pokeman
