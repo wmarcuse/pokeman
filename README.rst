@@ -29,6 +29,8 @@ Pokeman is a service choreography library for Python, currently built on top of 
 .. |Build Status| image:: https://api.travis-ci.org/wmarcuse/pokeman.png?branch=master
   :target: https://api.travis-ci.org/wmarcuse/pokeman
 
+.. |Coverage| image:: https://codecov.io/gh/wmarcuse/pokeman/branch/master/graph/badge.svg
+   :target: https://codecov.io/gh/wmarcuse/pokeman
 
-.. |Coverage| image:: https://codecov.io/github/wmarcuse/pokeman?branch=master
+.. |License| image:: https://img.shields.io/github/license/wmarcuse/pokeman
   :target: https://github.com/wmarcuse/pokeman
