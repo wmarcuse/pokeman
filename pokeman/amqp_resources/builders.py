@@ -337,12 +337,11 @@ class ResourceManager:
         """
         if self.builder is not None:
             raise SyntaxError('The {MANAGER} has already picked a builder. Assign some work to the builder first'
-                              'or destroy the current builder with Foreman.destroy_builder()'.format(
-                MANAGER=self.__class__.__name__
-            )
-            )
+                              'or destroy the current builder with Foreman.destroy_builder()'.
+                              format(MANAGER=self.__class__.__name__)
+                              )
         if blueprint['type'] not in _c__all__:
-            raise AttributeError('The provided resource is not valid')
+            raise ValueError('The provided resource is not valid')
 
         self.resource_exists = self._templates[blueprint['type']]['checker'](
             channel=self._connection.channel(),
@@ -404,11 +403,10 @@ class ResourceManager:
             heap_record = resources_heapq.get()
             resource_blueprint = json.loads(heap_record[1])
             LOGGER.debug('DELETING: ' + str(resource_blueprint))
-            destroyer = self._templates[resource_blueprint['type']]['destroyer'](
+            self._templates[resource_blueprint['type']]['destroyer'](
                 channel=self._connection.channel(),
                 blueprint=resource_blueprint
             )
         LOGGER.debug('Deleting all attached resources for Pokeman {POKER_ID} OK!'.format(
-            POKER_ID=poker_id
-        )
+            POKER_ID=poker_id)
         )
