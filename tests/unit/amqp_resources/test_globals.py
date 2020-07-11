@@ -101,6 +101,7 @@ class ExchangeTests(unittest.TestCase):
         self.assertEqual(self.exchange_unset.auto_delete, False)
 
     def test__specific_poker_setter(self):
+        from pokeman import Queue
         self.assertEqual(self.exchange_set.specific_poker, 'xyz')
         self.assertEqual(self.exchange_unset.specific_poker, None)
 
@@ -210,6 +211,11 @@ class QueueTests(unittest.TestCase):
             lambda_call=True
         ), None
         )
+        with self.assertRaisesRegex(ValueError, 'Unresolvable specific poker parameter'):
+            self.queue_set._specific_poker_setter(
+                specific_poker=list(),
+                lambda_call=0
+            )
 
 
 if __name__ == '__main__':

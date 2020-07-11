@@ -273,8 +273,6 @@ class ExchangeDestroyer(AbstractResourceDestroyer):
         except ChannelClosedByBroker as exc:
             if 'NOT_FOUND' in exc.reply_text:
                 pass
-            else:
-                raise
         LOGGER.debug('Deleting Exchange OK!')
 
 
@@ -292,8 +290,6 @@ class QueueDestroyer(AbstractResourceDestroyer):
         except ChannelClosedByBroker as exc:
             if 'NOT_FOUND' in exc.reply_text:
                 pass
-            else:
-                raise
         LOGGER.debug('Deleting Queue OK!')
 
 

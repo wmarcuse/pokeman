@@ -196,9 +196,8 @@ class BasicConnection(AbstractConnection):
             try:
                 _connection = pika.BlockingConnection(parameters=parameters)
             # TODO: Too broad exception handling here, zoom-in
-            except Exception:
-                LOGGER.exception('Pokeman connecting to AMQP broker FAILED!')
-                raise
+            except AttributeError:
+                raise AttributeError('The connection object has no attribute close')
             else:
                 LOGGER.debug('Pokeman connecting to AMQP broker OK!')
                 return _connection
