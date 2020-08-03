@@ -1,4 +1,4 @@
-from .connection import BasicConnection
+from .connection import BasicConnection, SelectConnection
 from .config.configs import BasicConfig
 
-__all__ = ['BasicConnection', 'BasicConfig']
+__all__ = ['BasicConnection', 'SelectConnection', 'BasicConfig']

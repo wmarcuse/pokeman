@@ -229,4 +229,81 @@ class BasicConnection(AbstractConnection):
                 LOGGER.debug('Closing Pokeman connection OK!')
 
 
+class SelectConnection(AbstractConnection):
+    """
+    The Selecting composite connection with the AMQP broker.
+    """
+    def connect(self, poker_id):
+        """
+        This method connects to AMQP broker, and sets the object connection variable.
 
+        :return: The pika connection handle.
+        :rtype: pika.BlockingConnection
+
+        .. note::
+            The connection parameters are set depending on the connection type:
+                * pika.URLParameters(url) when the ConnectionType == URL, useful
+                  when connecting to remote AMQP server.
+                * pika.ConnectionParameters(host) when the ConnectionType == HOST,
+                  useful when connecting to Docker container in same cluster.
+
+        .. note::
+            The while loop assures that the producer will fail to start due tot an
+            AMQPConnectionError that is the result of AMQP broker still in starting up
+            phase.
+        """
+        LOGGER.debug('Pokeman {POKER_ID} connecting to AMQP broker'.format(
+            POKER_ID=poker_id
+        )
+        )
+        parameters = None
+        connected = False
+        if self._method == ConnectionType.URL:
+            parameters = pika.URLParameters(
+                url=self.resolve_uri_parameters(uri=self._connection_string)
+            )
+        elif self._method == ConnectionType.HOST:
+            parameters = pika.ConnectionParameters(
+                host=self._connection_string,
+                credentials=pika.credentials.PlainCredentials(
+                    username=self._username,
+                    password=self._password,
+                ),
+                connection_attempts=self._config.CONNECTION_ATTEMPTS,
+                heartbeat=self._config.HEARTBEAT,
+                retry_delay=self._config.RETRY_DELAY
+            )
+        retries = 0
+        _connection = None
+        while not connected and retries < 6:
+            time.sleep(2)
+            retries += 1
+            try:
+                _connection = pika.SelectConnection(
+                    parameters=parameters
+                )
+            # TODO: Too broad exception handling here, zoom-in
+            except AttributeError:
+                raise AttributeError('The connection object has no attribute close')
+            else:
+                LOGGER.debug('Pokeman connecting to AMQP broker OK!')
+                return _connection
+
+    def disconnect(self, connection):
+        """
+        This method disconnects the connection with the AMQP broker.
+
+        :param connection: The provided connection.
+        :type connection: pokeman.Pokeman.connection
+        """
+        if connection is not None and not connection.is_closing and not connection.is_closed:
+            LOGGER.debug('Closing Pokeman connection')
+            try:
+                connection.close()
+            except Exception:
+                LOGGER.exception('Closing Pokeman connection FAILED!')
+                raise ConnectionError('Closing Pokeman connection FAILED!')
+            else:
+                if connection is not None and not connection.is_closed:
+                    raise ConnectionError('Closing Pokeman connection FAILED!')
+                LOGGER.debug('Closing Pokeman connection OK!')

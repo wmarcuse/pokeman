@@ -234,7 +234,7 @@ class ExchangeExistenceChecker(AbstractExistenceChecker):
             self._exists = True
         except ChannelClosedByBroker as exc:
             if 'NOT_FOUND' in exc.reply_text:
-                self._exists = False
+                self._exists = False  # pragma: no cover
 
 
 class QueueExistenceChecker(AbstractExistenceChecker):
@@ -256,7 +256,7 @@ class QueueExistenceChecker(AbstractExistenceChecker):
             self._exists = True
         except ChannelClosedByBroker as exc:
             if 'NOT_FOUND' in exc.reply_text:
-                self._exists = False
+                self._exists = False  # pragma: no cover
 
 
 class ExchangeDestroyer(AbstractResourceDestroyer):

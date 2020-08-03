@@ -3,10 +3,13 @@ from uuid import uuid4
 
 # Message Constructions
 from .message_constructions import BasicMessage
+from.messaging_endpoints import PollingEndpoint
 
 import logging
 
 LOGGER = logging.getLogger(__name__)
+
+# TODO: Methods get_app_id and set_channel to abstract Resolvers instead of Resolver
 
 
 class AbstractMessageConstructionResolver(ABC):
@@ -61,6 +64,62 @@ class AbstractMessageConstructionResolver(ABC):
         pass
 
 
+class AbstractMessagingEndpointResolver(ABC):
+    """
+    Abstract base clase for a EIP Messaging Endpoint resolver.
+    """
+    def __init__(self, coating):
+        self.coating = coating
+        self.blueprint = {
+            'type': None,
+            'app_id': None,
+            'channel': {}
+        }
+        self.channel_reference = {}
+        self.current_context_channel_id = None
+        self.resolve_coating()
+
+    def resolve_coating(self):
+        self.get_build_type()
+        self.set_channel()
+        self.set_exchange()
+        self.set_queue()
+        self.set_callback_method()
+        self.set_qos()
+
+    def get_build_type(self):
+        if 'Resolver' not in self.__class__.__name__:
+            raise NameError('Resolver not found in {CLASS_NAME}'.format(CLASS_NAME=self.__class__.__name__))
+        self.blueprint['type'] = self.__class__.__name__.replace('Resolver', '')
+
+    def _channel_references_generator(self):
+        for _channel_id, _context in self.channel_reference.items():
+            yield _channel_id, _context
+
+    @abstractmethod
+    def set_channel(self):
+        pass
+
+    @abstractmethod
+    def set_exchange(self):
+        pass
+
+    @abstractmethod
+    def set_queue(self):
+        pass
+
+    @abstractmethod
+    def set_callback_method(self):
+        pass
+
+    @abstractmethod
+    def set_qos(self):
+        pass
+
+    def set_response_queue(self):
+        pass
+
+
 class BasicMessageResolver(AbstractMessageConstructionResolver):
     """
     Template resolver for EIP Message Construction > BasicMessage
@@ -103,14 +162,59 @@ class BasicMessageResolver(AbstractMessageConstructionResolver):
         channel_path = self.blueprint['channel'][channel_id]
         channel_path['exchange'] = {}
         channel_path['exchange'][exchange_name] = {}
-        exchange_path = channel_path['exchange'][exchange_name]
-        # exchange_path['routing_key'] = self.coating.routing_key
 
     def set_routing_key(self):
         """
         This method sets the routing key in the blueprint
         """
         self.blueprint['channel'][self.current_context_channel_id]['routing_key'] = self.coating.routing_key
+
+
+class PollingEndpointResolver(AbstractMessagingEndpointResolver):
+    """
+    Template resolver for EIP Messaging Endpoint > PollingEndpoint
+    """
+    def set_channel(self):
+        """
+        This methods sets the channel in the blueprint.
+        """
+        channel_id = str(uuid4())
+        self.channel_reference[channel_id] = {}
+        self.channel_reference[channel_id]['active'] = False
+        self.blueprint['channel'][channel_id] = {}
+
+    def set_exchange(self):
+        """
+        This methods sets the exchange in the blueprint.
+        """
+        exchange_name = self.coating.exchange
+        channel_generator = self._channel_references_generator()
+        channel_id = None
+        for _channel_id, _context in channel_generator:
+            if _context['active'] is False:
+                channel_id = _channel_id
+                self.current_context_channel_id = channel_id  # TODO: Quick fix for non-multistep
+                _context['active'] = True
+                _context['exchange'] = exchange_name
+                channel_generator.close()
+                break
+            else:
+                channel_generator.close()
+                raise IndexError('{RESOLVER} failed, not enough channels for resource mapping available'.format(
+                    RESOLVER=self.__class__.__name__
+                ))
+        channel_path = self.blueprint['channel'][channel_id]
+        channel_path['exchange'] = {}
+        channel_path['exchange'][exchange_name] = {}
+
+    def set_queue(self):
+        self.blueprint['channel'][self.current_context_channel_id]['queue'] = self.coating.queue
+
+    def set_callback_method(self):
+        self.blueprint['channel'][self.current_context_channel_id]['callback_method'] = self.coating.callback_method
+
+    def set_qos(self):
+        self.blueprint['channel'][self.current_context_channel_id]['qos'] = self.coating.qos
 
 
 # TODO MAYBE: Maybe bring the Ptypes validation to the Wingman.
@@ -122,7 +226,10 @@ class Wingman:
     manages.
     """
     # Message Constructions
-    _templates = {BasicMessage: BasicMessageResolver}
+    _templates = {
+        BasicMessage: BasicMessageResolver,
+        PollingEndpoint: PollingEndpointResolver
+    }
 
     def __init__(self):
         """

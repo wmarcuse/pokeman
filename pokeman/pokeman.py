@@ -141,7 +141,7 @@ class Pokeman(AbstractPokeman):
         """
         if self.connection is not None:
             _coating = coating
-            _coating.exchange = coating.exchange(_pi=self)
+            _coating.exchange = coating.exchange(_pkid=self)
             self.apply_resources()
             foreman = Foreman()
             foreman.pick_builder(connection=self.connection, coating=_coating, ptype=ptype)
@@ -151,7 +151,7 @@ class Pokeman(AbstractPokeman):
         else:
             raise ConnectionError('No active connection set. Make sure to start the Pokeman first.')
 
-    def declare_consumer(self, coating, type):
+    def declare_consumer(self, coating, ptype):
         """
         This method invokes the building and delivery of a consumer
         with the provided configuration managed by the Foreman.
@@ -165,7 +165,14 @@ class Pokeman(AbstractPokeman):
         :return: The producer
         """
         if self.connection is not None:
-            pass
+            _coating = coating
+            _coating.exchange = coating.exchange(_pkid=self)
+            self.apply_resources()
+            foreman = Foreman()
+            foreman.pick_builder(connection=self.connection, coating=_coating, ptype=ptype)
+            consumer = foreman.deliver_consumer()
+            self.channels.append(consumer.channel)
+            return consumer
         else:
             raise ConnectionError('No active connection set. Make sure to start the Pokeman first.')
 

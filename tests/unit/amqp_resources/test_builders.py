@@ -488,8 +488,6 @@ class ResourceManagerTests(unittest.TestCase):
                 resource_heapq.put((_resource[0], json.dumps(_resource[1])))
             return resource_heapq
 
-
-
     def setUp(self):
         self.exchange_blueprint = {
             'type': 'Exchange',

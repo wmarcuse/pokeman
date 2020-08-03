@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from uuid import uuid4
+import functools
 import time
 import os
 import pika
@@ -31,14 +32,6 @@ class AbstractSynchronousProducerBuilder(ABC):
 
     @abstractmethod
     def set_current_context(self, channel_id, value):
-        pass
-
-    @abstractmethod
-    def go_to_next_build_step(self):
-        pass
-
-    @abstractmethod
-    def finalize_current_build_step(self):
         pass
 
     @abstractmethod
@@ -76,27 +69,23 @@ class AbstractSynchronousConsumerBuilder(ABC):
         pass
 
     @abstractmethod
-    def go_to_next_build_step(self):
-        pass
-
-    @abstractmethod
-    def finalize_current_build_step(self):
-        pass
-
-    @abstractmethod
     def add_channel(self):
         pass
 
     @abstractmethod
-    def apply_delivery_confirmations(self):
+    def setup_exchange(self):
         pass
 
     @abstractmethod
-    def setup_exchanges(self):
+    def setup_queue(self):
         pass
 
     @abstractmethod
-    def setup_queues(self):
+    def setup_callback_method(self):
+        pass
+
+    @abstractmethod
+    def setup_qos(self):
         pass
 
 
@@ -139,7 +128,7 @@ class SynchronousProducerBuilder(AbstractSynchronousProducerBuilder):
         a new producing task.
 
         :return: The built producer object.
-        :rtype: pokeman.coating._builders.Synchronousproducer
+        :rtype: pokeman.coating._builders.SynchronousProducer
         """
         producer = self._producer
         self.reset()
@@ -225,17 +214,6 @@ class SynchronousProducerBuilder(AbstractSynchronousProducerBuilder):
         else:
             self.current_context_channel_id = None
 
-    def go_to_next_build_step(self):
-        """
-        Invoke this method if a multistep build process is triggered.
-        """
-        pass
-
-    def finalize_current_build_step(self):
-        """
-        Invoke this method if a multistep build process is triggered.
-        """
-        pass
 
     def set_app_id(self):
         """
@@ -362,7 +340,6 @@ class SynchronousProducer:
 
         if not correlation_id:
             correlation_id = str(uuid4())
-
         # if not timestamp:
         #     timestamp = str(int(time.time()))
 
@@ -411,6 +388,251 @@ class SynchronousProducer:
         }
 
 
+class SynchronousConsumerBuilder(AbstractSynchronousConsumerBuilder):
+    BLUEPRINT = 0x0
+    INSTANCE = 0x1
+
+    def __init__(self, connection, blueprint):
+        """
+        This method initializes the consumer builder and sets the
+        connection and the by the Foreman already on compatibility
+        checked build template.
+
+        :param connection: The provided AMQP broker connection that is attached
+        to the Pokeman.
+        :type connection: pokeman.Pokeman.connection
+
+        :param blueprint: The resolved template from the Wingman.
+        :type blueprint: pokeman.coating._resolvers.Wingman._blueprint
+        """
+        self.reset()
+        self.connection = connection
+        self.blueprint = blueprint
+        self.multistep = False
+        self.channel_build_context = {}
+        self.current_context_channel_id = None
+        self.current_context_exchange_name = None
+
+    def reset(self):
+        """
+        The production builder is reset on initialization and after a
+        delivery of a consumer.
+        """
+        self._consumer = SynchronousConsumer()
+
+    @property
+    def consumer(self):
+        """
+        When the consumer delivery is invoked, the builder resets itself for
+        a new producing task.
+
+        :return: The built consumer object.
+        :rtype: pokeman.coating._builders.SynchronousConsumer
+        """
+        consumer = self._consumer
+        self.reset()
+        return consumer
+
+    def _channel_generator(self, location):
+        """
+        Channel generator.
+
+        :param location: The desired location to iterate.
+
+        :return: The generator object
+        """
+        if location == self.BLUEPRINT:
+            for _channel_id, _context in self.blueprint['channel'].items():
+                yield _channel_id, _context
+        elif location == self.INSTANCE:
+            for _channel_id, _context in self.channel_build_context.items():
+                yield _channel_id, _context
+        else:
+            raise ValueError('Invalid location argument')
+
+    def _exchange_generator(self, location, channel_id):
+        """
+        Exchange generator.
+
+        :param location: The desired location to iterate.
+
+        :param channel_id: The desired channel id to iterate.
+        :type channel_id: str
+
+        :return: The generator object
+        """
+        if location == self.BLUEPRINT:
+            for _exchange_name, _context in self.blueprint['channel'][channel_id]['exchange'].items():
+                yield _exchange_name, _context
+        else:
+            raise ValueError('Invalid location argument')
+
+    def digest_blueprint(self):
+        """
+        This method envokes blueprint digestion by the builder.
+        It detects if a multistep build process is necessary and
+        sets the channel build context.
+        """
+        LOGGER.debug('{BUILDER} digesting blueprint'.format(BUILDER=self.__class__.__name__))
+        if len(self.blueprint['channel']) > 1:
+            self.multistep = True  # TODO: Not implemented yet
+        channel_generator = self._channel_generator(location=self.BLUEPRINT)
+        for _channel_id, _context in channel_generator:
+            self.channel_build_context[_channel_id] = {'configured': False, 'current_context': False}
+        LOGGER.debug('{BUILDER} digesting blueprint OK!'.format(BUILDER=self.__class__.__name__))
+
+    def start_independent_build(self):
+        """
+        This method invokes the standard building process for
+        the consumer builder. The Foreman can invoke custom builds by
+        instructing the builder on it's own.
+        """
+        channel_generator = self._channel_generator(location=self.INSTANCE)
+        for _channel_id, _context in channel_generator:
+            self.set_current_context(channel_id=_channel_id, value=True)
+            self.add_channel()
+            self.setup_exchange()
+            self.setup_queue()
+            self.setup_callback_method()
+            self.setup_qos()
+            self.set_current_context(channel_id=_channel_id, value=False)
+
+    def set_current_context(self, channel_id, value):
+        """
+        This method sets the current context for a build
+        process started from a channel tree.
+
+        :param channel_id: The provided channel id.
+        :type channel_id: str
+
+        :param value: Boolean value if the current context needs to be set or removed.
+        :type value: bool
+        """
+        self.channel_build_context[channel_id]['current_context'] = value
+        if value is True:
+            self.current_context_channel_id = channel_id
+        else:
+            self.current_context_channel_id = None
+
+    def add_channel(self):
+        """
+        This method will open a new channel with AMQP broker and attach
+        it to the consumer.
+        """
+        LOGGER.debug('Creating a new channel')
+        new_channel = self.connection.channel()
+        self._consumer.channel = new_channel
+        self._consumer.channel_id = self.current_context_channel_id
+        LOGGER.debug('Creating a new channel OK!')
+
+    def setup_exchange(self):
+        """
+        Set up the exchange on the AMQP broker by declaring the exchange
+        on the current context channel.
+        """
+        # TODO: Resolve new globals format!!!!
+        # TODO: Add the logic here if multiple exchanges per producer are allowed for future releases
+        exchange_generator = self._exchange_generator(
+            location=self.BLUEPRINT,
+            channel_id=self.current_context_channel_id
+        )
+        for _exchange_name, _context in exchange_generator:
+            self.current_context_exchange_name = _exchange_name
+            LOGGER.debug('Binding exchange {EXCHANGE_NAME} to producer'.format(
+                EXCHANGE_NAME=_exchange_name
+            )
+            )
+            # TODO: Current configuration allows one exchange per producer
+            self._consumer.exchange = _exchange_name
+            LOGGER.debug('Binding exchange {EXCHANGE_NAME} to producer OK!'.format(
+                EXCHANGE_NAME=_exchange_name
+            )
+            )
+            self.current_context_exchange_name = None
+
+    def setup_queue(self):
+        channel_generator = self._channel_generator(location=self.BLUEPRINT)
+        for _channel_id, _context in channel_generator:
+            self._consumer.queue = _context['queue']
+
+    def setup_callback_method(self):
+        channel_generator = self._channel_generator(location=self.BLUEPRINT)
+        for _channel_id, _context in channel_generator:
+            self._consumer.callback_method = _context['callback_method']
+
+    def setup_qos(self):
+        channel_generator = self._channel_generator(location=self.BLUEPRINT)
+        for _channel_id, _context in channel_generator:
+            self._consumer.qos = _context['qos']
+            self._consumer.set_qos()
+
+
+class SynchronousConsumer:
+    def __init__(self):
+        self.channel = None
+        self.channel_id = None
+        self.exchange = None
+        self.queue = None
+        self.callback_method = lambda body, headers: None
+        self.qos = 1
+        self._consuming = False
+        self._consumer_tag = None
+
+
+    def set_qos(self):
+        self.channel.basic_qos(
+            prefetch_count=self.qos
+        )
+
+    # TODO: Integrate this as a choice
+    def acknowledge_message(self, delivery_tag):
+        self.channel.basic_ack(delivery_tag=delivery_tag)
+
+    def on_message_callback(self, channel, method, properties, body):
+        self.acknowledge_message(method.delivery_tag)
+        headers = properties.headers
+        self.callback_method(body, headers)
+
+    def _start_consuming(self):
+        self.add_on_cancel_callback()
+        self._consuming = True
+        self._consumer_tag = self.channel.basic_consume(
+            queue=self.queue,
+            on_message_callback=self.on_message_callback
+        )
+
+    def _stop_consuming(self):
+        if self.channel:
+            cb = functools.partial(
+                self._on_cancelok, userdata=self._consumer_tag)
+            self.channel.basic_cancel(self._consumer_tag, cb)
+
+    def _on_cancelok(self):
+        self.channel.close()
+
+    def start(self):
+        pass
+
+    def add_on_cancel_callback(self):
+        """
+        Add a callback that will be invoked if the AMQP broker cancels the consumer
+        for some reason. If the AMQP broker does cancel the consumer,
+        on_consumer_cancelled will be invoked.
+        """
+        LOGGER.debug("Adding consumer cancellation callback")
+        self.channel.add_on_cancel_callback(self.on_consumer_cancelled)
+
+    def on_consumer_cancelled(self, method_frame):
+        """
+        This method is invoked by pika when the AMQP broker sends a Basic.Cancel
+        for a consumer receiving messages.
+        :param method_frame: The Basic.Cancel frame
+        :type method_frame: pika.frame.Method
+        """
+        LOGGER.debug("Consumer was cancelled remotely, shutting down: {METHOD_FRAME}".format(METHOD_FRAME=method_frame))
+        if self.channel:
+            self.channel.close()
+
 # TODO: Add Template design pattern integration for Asynchonous Producer integration
 class Foreman:
     """
@@ -457,15 +679,13 @@ class Foreman:
             )
         if coating.__class__.__name__ not in _c__all__:
             raise AttributeError('The provided coating is not valid')
-
         blueprint = self.wingman.resolve(coating=coating)
-
-        # with open('template_{UUID}.json'.format(UUID=str(uuid4())), 'w', encoding='utf-8') as f:
-        #         #     json.dump(blueprint, f, ensure_ascii=False, indent=4)
-
+        print(blueprint)
         ptype_check = Ptypes._map(eip=blueprint["type"], ptype=ptype)
         if ptype_check["map"] == Ptypes.SYNC_PRODUCER:
             self.builder = SynchronousProducerBuilder(connection=connection, blueprint=blueprint)
+        elif ptype_check["map"] == Ptypes.SYNC_CONSUMER:
+            self.builder = SynchronousConsumerBuilder(connection=connection, blueprint=blueprint)
         else:
             raise NotImplementedError('The provided configuration parameters are not implemented yet')
 
@@ -479,6 +699,17 @@ class Foreman:
         self.builder.digest_blueprint()
         self.builder.start_independent_build()
         return self.builder.producer
+
+    def deliver_consumer(self):
+        """
+        This method invokes the building of a consumer by the builder
+        and delivers it to the Pokeman.
+
+        :return: The consumer object
+        """
+        self.builder.digest_blueprint()
+        self.builder.start_independent_build()
+        return self.builder.consumer
 
     def destroy_builder(self):
         """

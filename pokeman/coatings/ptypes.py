@@ -3,10 +3,14 @@ from enum import Enum
 
 class Ptypes(Enum):
 
-    ASYNC_PRODUCER = 0x50
-    SYNC_PRODUCER = 0xa0
+    ASYNC_PRODUCER = 0x10
+    SYNC_PRODUCER = 0x20
+
+    ASYNC_CONSUMER = 0x30
+    SYNC_CONSUMER = 0x40
 
     __BasicMessage__ = ~ASYNC_PRODUCER & SYNC_PRODUCER
+    __PollingEndpoint__ = ~ASYNC_CONSUMER & SYNC_CONSUMER
 
     @classmethod
     def _map(cls, eip, ptype):

@@ -1,5 +1,10 @@
 from pokeman.coatings.message_constructions._abc_message import AbstractBasicMessageConstruction
-from pokeman.amqp_resources.globals import Exchange, Queue, RoutingKey
+from pokeman.amqp_resources.globals import Exchange, RoutingKey
+
+import logging
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 # TODO: Check topic exchange configuration
@@ -15,7 +20,7 @@ class BasicMessage(AbstractBasicMessageConstruction):
 
     def __init__(
             self,
-            app_id=None,
+            app_id=_SENTINEL,
             exchange=_SENTINEL,
             routing_key=_SENTINEL
     ):
@@ -31,9 +36,9 @@ class BasicMessage(AbstractBasicMessageConstruction):
         """
         self._exchange = exchange
         self._routing_key = routing_key
-        self._exchange_converter = lambda _pi: Exchange(
+        self._exchange_converter = lambda _pkid: Exchange(
             specific_poker=self._specific_poker_setter(
-                specific_poker=_pi,
+                specific_poker=_pkid,
                 lambda_call=True
             )).exchange_name if self._exchange is self._SENTINEL else self._exchange.exchange_name
         self._routing_key_converter = lambda: RoutingKey().key if self._routing_key is self._SENTINEL else self._routing_key.key
