@@ -18,6 +18,10 @@ Pokeman is a service choreography library for Python, currently built on top of 
 - Deploy multiple producers and consumers with just a few lines of code.
 - Use Pokeman at multiple Python-based (micro-)services to implement easy service choreography.
 
+# Connection structure
+
+* Sync resources share the blocking connection of the Pokeman and the connection is closed on Pokeman level
+* Async resources are assigned unique select connections and the connection is closed on the resource level
 
 # Run tests
 

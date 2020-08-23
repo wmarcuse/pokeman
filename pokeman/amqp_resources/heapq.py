@@ -281,7 +281,6 @@ class ResourceHeapQ:
             The ResourceManager handles the actual creation
             of the resources by using the provided connection.
         """
-        print(connection)
         LOGGER.debug('Pokeman {POKER_ID} applying resources'.format(POKER_ID=poker_id))
         resource_manager = ResourceManager(connection=connection)
         _heapq = cls.get_heapq(poker_id=poker_id)

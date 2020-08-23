@@ -37,6 +37,6 @@ polling_endpoint_coating = PollingEndpoint(
     qos=1
 )
 
-consumer_1 = poker.declare_consumer(coating=polling_endpoint_coating, ptype=Ptypes.SYNC_CONSUMER)
-consumer_1._start_consuming()
+consumer_1 = poker.declare_consumer(coating=polling_endpoint_coating, ptype=Ptypes.ASYNC_CONSUMER)
+consumer_1.start()
 

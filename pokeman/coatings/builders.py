@@ -31,11 +31,7 @@ class AbstractSynchronousProducerBuilder(ABC):
         pass
 
     @abstractmethod
-    def set_current_context(self, channel_id, value):
-        pass
-
-    @abstractmethod
-    def add_channel(self):
+    def open_channel(self):
         pass
 
     @abstractmethod
@@ -51,7 +47,7 @@ class AbstractSynchronousProducerBuilder(ABC):
         pass
 
 
-class AbstractSynchronousConsumerBuilder(ABC):
+class AbstractAsynchronousConsumerBuilder(ABC):
     """
     Abstract base class for a synchronous consumer builder.
     """
@@ -65,11 +61,7 @@ class AbstractSynchronousConsumerBuilder(ABC):
         pass
 
     @abstractmethod
-    def set_current_context(self, channel_id, value):
-        pass
-
-    @abstractmethod
-    def add_channel(self):
+    def setup_connection(self):
         pass
 
     @abstractmethod
@@ -109,10 +101,6 @@ class SynchronousProducerBuilder(AbstractSynchronousProducerBuilder):
         self.reset()
         self.connection = connection
         self.blueprint = blueprint
-        self.multistep = False
-        self.channel_build_context = {}
-        self.current_context_channel_id = None
-        self.current_context_exchange_name = None
 
     def reset(self):
         """
@@ -134,40 +122,6 @@ class SynchronousProducerBuilder(AbstractSynchronousProducerBuilder):
         self.reset()
         return producer
 
-    def _channel_generator(self, location):
-        """
-        Channel generator.
-
-        :param location: The desired location to iterate.
-
-        :return: The generator object
-        """
-        if location == self.BLUEPRINT:
-            for _channel_id, _context in self.blueprint['channel'].items():
-                yield _channel_id, _context
-        elif location == self.INSTANCE:
-            for _channel_id, _context in self.channel_build_context.items():
-                yield _channel_id, _context
-        else:
-            raise ValueError('Invalid location argument')
-
-    def _exchange_generator(self, location, channel_id):
-        """
-        Exchange generator.
-
-        :param location: The desired location to iterate.
-
-        :param channel_id: The desired channel id to iterate.
-        :type channel_id: str
-
-        :return: The generator object
-        """
-        if location == self.BLUEPRINT:
-            for _exchange_name, _context in self.blueprint['channel'][channel_id]['exchange'].items():
-                yield _exchange_name, _context
-        else:
-            raise ValueError('Invalid location argument')
-
     def digest_blueprint(self):
         """
         This method envokes blueprint digestion by the builder.
@@ -175,11 +129,6 @@ class SynchronousProducerBuilder(AbstractSynchronousProducerBuilder):
         sets the channel build context.
         """
         LOGGER.debug('{BUILDER} digesting blueprint'.format(BUILDER=self.__class__.__name__))
-        if len(self.blueprint['channel']) > 1:
-            self.multistep = True  # TODO: Not implemented yet
-        channel_generator = self._channel_generator(location=self.BLUEPRINT)
-        for _channel_id, _context in channel_generator:
-            self.channel_build_context[_channel_id] = {'configured': False, 'current_context': False}
         LOGGER.debug('{BUILDER} digesting blueprint OK!'.format(BUILDER=self.__class__.__name__))
 
     def start_independent_build(self):
@@ -188,32 +137,10 @@ class SynchronousProducerBuilder(AbstractSynchronousProducerBuilder):
         the producer builder. The Foreman can invoke custom builds by
         instructing the builder on it's own.
         """
-        channel_generator = self._channel_generator(location=self.INSTANCE)
-        for _channel_id, _context in channel_generator:
-            self.set_current_context(channel_id=_channel_id, value=True)
-            self.add_channel()
-            self.apply_delivery_confirmations()  # TODO: Make choice in composite
-            self.setup_exchange()
-            self.setup_routing_key()
-            self.set_current_context(channel_id=_channel_id, value=False)
-
-    def set_current_context(self, channel_id, value):
-        """
-        This method sets the current context for a build
-        process started from a channel tree.
-
-        :param channel_id: The provided channel id.
-        :type channel_id: str
-
-        :param value: Boolean value if the current context needs to be set or removed.
-        :type value: bool
-        """
-        self.channel_build_context[channel_id]['current_context'] = value
-        if value is True:
-            self.current_context_channel_id = channel_id
-        else:
-            self.current_context_channel_id = None
-
+        self.open_channel()
+        self.apply_delivery_confirmations()  # TODO: Make choice in composite
+        self.setup_exchange()
+        self.setup_routing_key()
 
     def set_app_id(self):
         """
@@ -221,16 +148,15 @@ class SynchronousProducerBuilder(AbstractSynchronousProducerBuilder):
         """
         self._producer.APP_ID = self.blueprint['app_id']
 
-    def add_channel(self):
+    def open_channel(self):
         """
         This method will open a new channel with AMQP broker and attach
         it to the producer.
         """
-        LOGGER.debug('Creating a new channel')
+        LOGGER.debug('Opening a new channel')
         new_channel = self.connection.channel()
         self._producer.channel = new_channel
-        self._producer.channel_id = self.current_context_channel_id
-        LOGGER.debug('Creating a new channel OK!')
+        LOGGER.debug('Opening a new channel OK!')
 
     def apply_delivery_confirmations(self):
         """
@@ -249,32 +175,21 @@ class SynchronousProducerBuilder(AbstractSynchronousProducerBuilder):
         Set up the exchange on the AMQP broker by declaring the exchange
         on the current context channel.
         """
-        # TODO: Resolve new globals format!!!!
-        # TODO: Add the logic here if multiple exchanges per producer are allowed for future releases
-        exchange_generator = self._exchange_generator(
-            location=self.BLUEPRINT,
-            channel_id=self.current_context_channel_id
+        _exchange_name = self.blueprint['exchange']
+        LOGGER.debug('Binding exchange {EXCHANGE_NAME} to {APP_ID} producer'.format(
+            EXCHANGE_NAME=_exchange_name,
+            APP_ID=self.blueprint['app_id']
         )
-        for _exchange_name, _context in exchange_generator:
-            self.current_context_exchange_name = _exchange_name
-            LOGGER.debug('Binding exchange {EXCHANGE_NAME} to {APP_ID} producer'.format(
-                EXCHANGE_NAME=_exchange_name,
-                APP_ID=self.blueprint['app_id']
-            )
-            )
-            # TODO: Current configuration allows one exchange per producer
-            self._producer.exchange = _exchange_name
-            LOGGER.debug('Binding exchange {EXCHANGE_NAME} to {APP_ID} producer OK!'.format(
-                EXCHANGE_NAME=_exchange_name,
-                APP_ID=self.blueprint['app_id']
-            )
-            )
-            self.current_context_exchange_name = None
+        )
+        self._producer.exchange = _exchange_name
+        LOGGER.debug('Binding exchange {EXCHANGE_NAME} to {APP_ID} producer OK!'.format(
+            EXCHANGE_NAME=_exchange_name,
+            APP_ID=self.blueprint['app_id']
+        )
+        )
 
     def setup_routing_key(self):
-        channel_generator = self._channel_generator(location=self.BLUEPRINT)
-        for _channel_id, _context in channel_generator:
-            self._producer.routing_key = _context['routing_key']
+        self._producer.routing_key = self.blueprint['routing_key']
 
 
 class SynchronousProducer:
@@ -300,7 +215,6 @@ class SynchronousProducer:
 
     def __init__(self):
         self.channel = None
-        self.channel_id = None
         self.exchange = None
         self.routing_key = None
         self._message_number = 0
@@ -388,7 +302,7 @@ class SynchronousProducer:
         }
 
 
-class SynchronousConsumerBuilder(AbstractSynchronousConsumerBuilder):
+class AsynchronousConsumerBuilder(AbstractAsynchronousConsumerBuilder):
     BLUEPRINT = 0x0
     INSTANCE = 0x1
 
@@ -408,17 +322,13 @@ class SynchronousConsumerBuilder(AbstractSynchronousConsumerBuilder):
         self.reset()
         self.connection = connection
         self.blueprint = blueprint
-        self.multistep = False
-        self.channel_build_context = {}
-        self.current_context_channel_id = None
-        self.current_context_exchange_name = None
 
     def reset(self):
         """
         The production builder is reset on initialization and after a
         delivery of a consumer.
         """
-        self._consumer = SynchronousConsumer()
+        self._consumer = AsynchronousConsumer()
 
     @property
     def consumer(self):
@@ -433,40 +343,6 @@ class SynchronousConsumerBuilder(AbstractSynchronousConsumerBuilder):
         self.reset()
         return consumer
 
-    def _channel_generator(self, location):
-        """
-        Channel generator.
-
-        :param location: The desired location to iterate.
-
-        :return: The generator object
-        """
-        if location == self.BLUEPRINT:
-            for _channel_id, _context in self.blueprint['channel'].items():
-                yield _channel_id, _context
-        elif location == self.INSTANCE:
-            for _channel_id, _context in self.channel_build_context.items():
-                yield _channel_id, _context
-        else:
-            raise ValueError('Invalid location argument')
-
-    def _exchange_generator(self, location, channel_id):
-        """
-        Exchange generator.
-
-        :param location: The desired location to iterate.
-
-        :param channel_id: The desired channel id to iterate.
-        :type channel_id: str
-
-        :return: The generator object
-        """
-        if location == self.BLUEPRINT:
-            for _exchange_name, _context in self.blueprint['channel'][channel_id]['exchange'].items():
-                yield _exchange_name, _context
-        else:
-            raise ValueError('Invalid location argument')
-
     def digest_blueprint(self):
         """
         This method envokes blueprint digestion by the builder.
@@ -474,11 +350,6 @@ class SynchronousConsumerBuilder(AbstractSynchronousConsumerBuilder):
         sets the channel build context.
         """
         LOGGER.debug('{BUILDER} digesting blueprint'.format(BUILDER=self.__class__.__name__))
-        if len(self.blueprint['channel']) > 1:
-            self.multistep = True  # TODO: Not implemented yet
-        channel_generator = self._channel_generator(location=self.BLUEPRINT)
-        for _channel_id, _context in channel_generator:
-            self.channel_build_context[_channel_id] = {'configured': False, 'current_context': False}
         LOGGER.debug('{BUILDER} digesting blueprint OK!'.format(BUILDER=self.__class__.__name__))
 
     def start_independent_build(self):
@@ -487,137 +358,259 @@ class SynchronousConsumerBuilder(AbstractSynchronousConsumerBuilder):
         the consumer builder. The Foreman can invoke custom builds by
         instructing the builder on it's own.
         """
-        channel_generator = self._channel_generator(location=self.INSTANCE)
-        for _channel_id, _context in channel_generator:
-            self.set_current_context(channel_id=_channel_id, value=True)
-            self.add_channel()
-            self.setup_exchange()
-            self.setup_queue()
-            self.setup_callback_method()
-            # self.setup_qos()
-            self.set_current_context(channel_id=_channel_id, value=False)
+        self.setup_connection()
+        self.setup_exchange()
+        self.setup_queue()
+        self.setup_callback_method()
+        self.setup_qos()
 
-    def set_current_context(self, channel_id, value):
+    def setup_connection(self):
         """
-        This method sets the current context for a build
-        process started from a channel tree.
-
-        :param channel_id: The provided channel id.
-        :type channel_id: str
-
-        :param value: Boolean value if the current context needs to be set or removed.
-        :type value: bool
+        Set up the connection object for the consumer.
         """
-        self.channel_build_context[channel_id]['current_context'] = value
-        if value is True:
-            self.current_context_channel_id = channel_id
-        else:
-            self.current_context_channel_id = None
-
-    def add_channel(self):
-        """
-        This method will open a new channel with AMQP broker and attach
-        it to the consumer.
-        """
-        LOGGER.debug('Creating a new channel')
-        new_channel = self.connection.channel()
-        self._consumer.channel = new_channel
-        self._consumer.channel_id = self.current_context_channel_id
-        LOGGER.debug('Creating a new channel OK!')
+        self._consumer.connection_ob = self.connection
 
     def setup_exchange(self):
         """
         Set up the exchange on the AMQP broker by declaring the exchange
         on the current context channel.
         """
-        # TODO: Resolve new globals format!!!!
-        # TODO: Add the logic here if multiple exchanges per producer are allowed for future releases
-        exchange_generator = self._exchange_generator(
-            location=self.BLUEPRINT,
-            channel_id=self.current_context_channel_id
+        _exchange_name = self.blueprint['exchange']
+        LOGGER.debug('Binding exchange {EXCHANGE_NAME} to producer'.format(
+            EXCHANGE_NAME=_exchange_name
         )
-        for _exchange_name, _context in exchange_generator:
-            self.current_context_exchange_name = _exchange_name
-            LOGGER.debug('Binding exchange {EXCHANGE_NAME} to producer'.format(
-                EXCHANGE_NAME=_exchange_name
-            )
-            )
-            # TODO: Current configuration allows one exchange per producer
-            self._consumer.exchange = _exchange_name
-            LOGGER.debug('Binding exchange {EXCHANGE_NAME} to producer OK!'.format(
-                EXCHANGE_NAME=_exchange_name
-            )
-            )
-            self.current_context_exchange_name = None
+        )
+        self._consumer.exchange = _exchange_name
+        LOGGER.debug('Binding exchange {EXCHANGE_NAME} to producer OK!'.format(
+            EXCHANGE_NAME=_exchange_name
+        )
+        )
 
     def setup_queue(self):
-        channel_generator = self._channel_generator(location=self.BLUEPRINT)
-        for _channel_id, _context in channel_generator:
-            self._consumer.queue = _context['queue']
+        self._consumer.queue = self.blueprint['queue']
 
     def setup_callback_method(self):
-        channel_generator = self._channel_generator(location=self.BLUEPRINT)
-        for _channel_id, _context in channel_generator:
-            self._consumer.callback_method = _context['callback_method']
+        self._consumer.callback_method = self.blueprint['callback_method']
 
     def setup_qos(self):
-        channel_generator = self._channel_generator(location=self.BLUEPRINT)
-        for _channel_id, _context in channel_generator:
-            self._consumer.qos = _context['qos']
-            self._consumer.set_qos()
+        self._consumer.qos = self.blueprint['qos']
 
 
-class SynchronousConsumer:
+class AsynchronousConsumer:
     def __init__(self):
+        self.connection_ob = None
+        self.connection = None
         self.channel = None
-        self.channel_id = None
         self.exchange = None
         self.queue = None
         self.callback_method = lambda body, headers: None
         self.qos = 1
+        self.was_consuming = False
         self._consuming = False
         self._consumer_tag = None
+        self._closing = False
+
+    def connect(self):
+        try:
+            print(self.connection_ob)
+            self.connection_ob.connect(
+                on_open_callback=self.on_connection_open,
+                on_open_error=self.on_connection_open_error,
+                on_close_callback=self.on_connection_closed
+            )
+            self.connection = self.connection_ob.connection
+        except Exception as e:
+            LOGGER.exception("Trying to set connection attempt failed")
+            pass
+
+    def close_connection(self):
+        self._consuming = False
+        if self.connection.is_closing or self.connection.is_closed:
+            LOGGER.debug("Connection is closing or already closed")
+        else:
+            LOGGER.debug("Closing connection")
+            self.connection.close()
+
+    def on_connection_open(self, _unused_connection):
+        """
+        This method is called by pika once the connection to the AMQP broker has
+        been established. It passes the handle to the connection object in
+        _unused_connection, now it unused but in this method mutations on
+        the handle are possible.
+        The method then calls the self.open_channel() method.
+        :param _unused_connection: The connection.
+        :type _unused_connection: pika.SelectConnection
+        """
+        LOGGER.debug("Connection opened")
+        self.open_channel()
+
+    def on_connection_open_error(self, _unused_connection, err):
+        """
+        This method is called by pika if the connection to the AMQP broker
+        can"t be established. The self.reconnect() method is called.
+        :param _unused_connection: The connection handle where error occurred.
+        :type _unused_connection: pika.SelectConnection
+        :param err: The error.
+        :type err: Exception
+        """
+        LOGGER.error("Connection open failed, reconnecting: {ERROR}".format(ERROR=err))
+        self.reconnect()
+
+    def on_connection_closed(self, _unused_connection, reason):
+        """
+        This method is invoked by pika when the connection to the AMQP broker is
+        closed unexpectedly. Since it is unexpected, this method will
+        reconnect to the AMQP broker if it disconnects.
+        :param _unused_connection: The closed connection handle.
+        :type _unused_connection: pika.SelectConnection|Any
+        :param reason: The exception representing the reason for loss of
+            connection.
+        :type reason: Exception
+        """
+        self.channel = None
+        if self._closing:
+            self.connection.ioloop.stop()
+        else:
+            LOGGER.warning("Connection closed, reconnect necessary: {REASON}".format(REASON=reason))
+            self.reconnect()
+
+    def reconnect(self):
+        """
+        This method will be invoked if the connection can"t be opened or is
+        closed. Indicates that a reconnect is necessary then stops the
+        ioloop.
+        """
+        self.should_reconnect = True
+        self.stop()
+
+    def open_channel(self):
+        """
+        This method will open a new channel with the AMQP broker by issuing the
+        Channel. Open RPC command. When the AMQP broker confirms the channel is open
+        by sending the Channel.OpenOK RPC reply, the on_channel_open method
+        will be invoked.
+        """
+        LOGGER.debug("Creating a new channel")
+        self.connection.channel(on_open_callback=self.on_channel_open)
+
+    def on_channel_open(self, channel):
+        """
+        This method is invoked by pika when the channel has been opened.
+        The channel object is passed in so this method can make use of it.
+        Since the channel is now open, the exchange to use is declared.
+        :param channel: The channel object.
+        :type channel: pika.channel.Channel
+        """
+        LOGGER.debug("Channel opened")
+        self.channel = channel
+        self.add_on_channel_close_callback()
+        self.set_qos()
+
+    def add_on_channel_close_callback(self):
+        """
+        This method tells pika to call the on_channel_closed method if
+        the AMQP broker unexpectedly closes the channel.
+        """
+        LOGGER.debug("Adding channel close callback")
+        self.channel.add_on_close_callback(self.on_channel_closed)
+
+    def on_channel_closed(self, channel, reason):
+        """
+        Invoked by pika when the AMQP broker unexpectedly closes the channel.
+        Channels are usually closed if there is an attempt to do something that
+        violates the protocol, such as re-declare an exchange or queue with
+        different parameters. In this case, this method will close the
+        connection to shutdown the object.
+        :param channel: The closed channel.
+        :type channel: pika.channel.Channel
+        :param reason: The reason why the channel was closed.
+        :type reason: Exception
+        """
+        LOGGER.warning("Channel {CHANNEL} was closed: {REASON}".format(CHANNEL=channel,
+                                                                       REASON=reason))
+        self.close_connection()
 
     def set_qos(self):
+        """
+        This method sets up the consumer prefetch to only be delivered
+        one message at a time. The consumer must acknowledge this message
+        before the AMQP broker will deliver another one. Do experiment
+        with different prefetch values to achieve desired performance.
+        """
         self.channel.basic_qos(
-            prefetch_count=self.qos
-        )
+            prefetch_count=self.qos, callback=self.on_basic_qos_ok)
+
+    def on_basic_qos_ok(self, _unused_frame):
+        """
+        This method is invoked by pika when the Basic.QoS method has completed.
+        At this point the consumer will start consuming messages by calling the
+        self.start_consuming() method which will invoke the needed RPC commands
+        to start the process.
+        :param _unused_frame: The Basic.QosOk response frame
+        :type _unused_frame: pika.frame.Method
+        """
+        LOGGER.debug("QOS set to: {PREFETCH_COUNT}".format(PREFETCH_COUNT=self.qos))
+        self.start_consuming()
+
+    def start_consuming(self):
+        """
+        This method sets up the consumer by first calling
+        add_on_cancel_callback so that the object is notified if the AMQP broker
+        cancels the consumer. It then issues the Basic.Consume RPC command
+        which returns the consumer tag that is used to uniquely identify the
+        consumer with the AMQP broker. The method keeps the value globally to use
+        it when we want to cancel consuming. The on_message method is passed
+        in as a callback pika will invoke when a message is fully received.
+        """
+        LOGGER.debug("Issuing consumer related RPC commands")
+        self.add_on_cancel_callback()
+        self._consumer_tag = self.channel.basic_consume(
+            queue=self.queue, on_message_callback=self.on_message)
+
+        self.was_consuming = True
+        self._consuming = True
+
+    def on_message(self, channel, method, properties, body):
+        """
+        Invoked by pika when a message is delivered from the AMQP broker. The
+        channel is passed for convenience. The basic_deliver object that
+        is passed in carries the exchange, routing key, delivery tag and
+        a redelivered flag for the message. The properties passed in is an
+        instance of BasicProperties with the message properties and the body
+        is the message that was sent.
+
+        :param channel: The channel object.
+        :type channel: pika.channel.Channel
+
+        :param method: basic_deliver method.
+        :type method: pika.Spec.Basic.Deliver
+
+        :param properties: The properties.
+        :type properties: pika.Spec.BasicProperties
+
+        :param body: The message body.
+        :type body: bytes
+
+        .. note::
+            The return statement in the except statement is for avoiding
+            a dead loop when the parsed function fails.
+        """
+        headers = properties.headers
+        try:
+            self.callback_method(body, headers)
+            self.acknowledge_message(method.delivery_tag)
+        except Exception:
+            LOGGER.exception("Asynchronous callback method exception:")
 
     # TODO: Integrate this as a choice
     def acknowledge_message(self, delivery_tag):
         self.channel.basic_ack(delivery_tag=delivery_tag)
 
-    def on_message_callback(self, channel, method, properties, body):
-        self.acknowledge_message(method.delivery_tag)
-        headers = properties.headers
-        self.callback_method(body, headers)
-
-    def _start_consuming(self):
-        self.set_qos()
-        self.add_on_cancel_callback()
-        self._consuming = True
-        self._consumer_tag = self.channel.basic_consume(
-            queue=self.queue,
-            on_message_callback=self.on_message_callback
-        )
-
-    def _stop_consuming(self):
-        if self.channel:
-            cb = functools.partial(
-                self._on_cancelok, userdata=self._consumer_tag)
-            self.channel.basic_cancel(self._consumer_tag, cb)
-
-    def _on_cancelok(self):
-        self.channel.close()
-
-    def start(self):
-        pass
-
     def add_on_cancel_callback(self):
         """
         Add a callback that will be invoked if the AMQP broker cancels the consumer
         for some reason. If the AMQP broker does cancel the consumer,
-        on_consumer_cancelled will be invoked.
+        on_consumer_cancelled will be invoked by pika.
         """
         LOGGER.debug("Adding consumer cancellation callback")
         self.channel.add_on_cancel_callback(self.on_consumer_cancelled)
@@ -632,6 +625,72 @@ class SynchronousConsumer:
         LOGGER.debug("Consumer was cancelled remotely, shutting down: {METHOD_FRAME}".format(METHOD_FRAME=method_frame))
         if self.channel:
             self.channel.close()
+
+    def stop_consuming(self):
+        """
+        Tell the AMQP broker that you would like to stop consuming by sending the
+        Basic.Cancel RPC command.
+        """
+        if self.channel:
+            LOGGER.debug("Sending a Basic.Cancel RPC command to the AMQP broker")
+            cb = functools.partial(
+                self.on_cancelok, userdata=self._consumer_tag)
+            self.channel.basic_cancel(self._consumer_tag, cb)
+
+    def on_cancelok(self, _unused_frame, userdata):
+        """
+        This method is invoked by pika when the AMQP broker acknowledges the
+        cancellation of a consumer. At this point we will close the channel.
+        This will invoke the on_channel_closed method once the channel has been
+        closed, which will in-turn close the connection.
+        :param _unused_frame: The Basic.CancelOk frame
+        :type _unused_frame: pika.frame.Method
+        :param userdata: Extra user data (consumer tag)
+        :type userdata: str|unicode
+        """
+        self._consuming = False
+        LOGGER.debug(
+            "the AMQP broker acknowledged the cancellation of the consumer: {USERDATA}".format(USERDATA=userdata))
+        self.close_channel()
+
+    def close_channel(self):
+        """
+        Call to close the channel with the AMQP broker cleanly by issuing the
+        Channel.Close RPC command.
+        """
+        LOGGER.debug("Closing the channel")
+        self.channel.close()
+
+    def start(self):
+        """
+        Start the consumer by connecting to the AMQP broker and then starting
+        the IOLoop to block and allow the SelectConnection to operate.
+        """
+        self.connect()
+        print(self.connection)
+        self.connection.ioloop.start()
+
+    def stop(self):
+        """
+        Cleanly shutdown the connection to the AMQP broker by stopping the consumer
+        with the AMQP broker. When the AMQP broker confirms the cancellation, on_cancelok
+        will be invoked by pika, which will then closing the channel and
+        connection. The IOLoop is started again because this method is invoked
+        when raising a PoisonPill exception. This
+        exception stops the IOLoop which needs to be running for pika to
+        communicate with the AMQP broker. All of the commands issued prior to starting
+        the IOLoop will be buffered but not processed.
+        """
+        if not self._closing:
+            self._closing = True
+            LOGGER.debug("Stopping")
+            if self._consuming:
+                self.stop_consuming()
+                self.connection.ioloop.start()
+            else:
+                self.connection.ioloop.stop()
+            LOGGER.debug("Stopped")
+
 
 # TODO: Add Template design pattern integration for Asynchonous Producer integration
 class Foreman:
@@ -671,6 +730,8 @@ class Foreman:
         :param ptype: The provided Ptypes
         :type ptype: pokeman.coating.ptypes.Ptypes
         """
+        print(connection)
+        print("AAA")
         if self.builder is not None:
             raise SyntaxError('The {MANAGER} has already picked a builder. Assign some work to the builder first'
                               'or destroy the current builder with {MANAGER}.destroy_builder()'.format(
@@ -680,12 +741,11 @@ class Foreman:
         if coating.__class__.__name__ not in _c__all__:
             raise AttributeError('The provided coating is not valid')
         blueprint = self.wingman.resolve(coating=coating)
-        print(blueprint)
         ptype_check = Ptypes._map(eip=blueprint["type"], ptype=ptype)
         if ptype_check["map"] == Ptypes.SYNC_PRODUCER:
             self.builder = SynchronousProducerBuilder(connection=connection, blueprint=blueprint)
-        elif ptype_check["map"] == Ptypes.SYNC_CONSUMER:
-            self.builder = SynchronousConsumerBuilder(connection=connection, blueprint=blueprint)
+        elif ptype_check["map"] == Ptypes.ASYNC_CONSUMER:
+            self.builder = AsynchronousConsumerBuilder(connection=connection, blueprint=blueprint)
         else:
             raise NotImplementedError('The provided configuration parameters are not implemented yet')
 

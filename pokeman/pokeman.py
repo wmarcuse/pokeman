@@ -118,7 +118,7 @@ class Pokeman(AbstractPokeman):
         """
         if self.connection_parameters is not None:
             self.set_sync_connection(main=True)
-            self.MSC().connect(poker_id=self.POKER_ID)
+            self.MSC().connect()
         else:
             raise AttributeError('No connection parameters set for the Pokeman.')
 
@@ -146,13 +146,30 @@ class Pokeman(AbstractPokeman):
             raise ConnectionError('No active connection set. Make sure to start the Pokeman first.')
         
     def _set_coating_ptype_connection(self, ptype):
+        """
+        This method assigns the connection type depending on the
+        synchronous or asynchronous nature of the coating Ptype.
+
+        :param ptype: The provided Ptype
+        :type ptype: Ptypes
+
+        :return: The connection object
+
+        .. note::
+            Note that:
+            * in case of a SYNC_ Ptype a live connection object is passed
+            * in case of a ASYNC_ Ptype a not connected connection object
+            is passed, because the asynchronous IOloop needs a callback
+            waterfall.
+            * in case of a ASYNC_ Ptype a new asynchronous connection
+            object is created for each resource.
+        """
         if self.MSC() is not None:
-            if 'SYNC_' in ptype.name:
+            if ptype.name.startswith('SYNC_'):
                 return self.MSC().connection
-            elif 'ASYNC_' in ptype.name:
+            elif ptype.name.startswith('ASYNC_'):
                 cid = self.set_async_connection()
-                self.connections['async'][cid].connect(poker_id=self.POKER_ID)
-                return self.connections['async'][cid].connection
+                return self.connections['async'][cid]
         else:
             raise ConnectionError('No active connection set. Make sure to start the Pokeman first.')
 
@@ -179,7 +196,8 @@ class Pokeman(AbstractPokeman):
             ptype=ptype
         )
         producer = foreman.deliver_producer()
-        self.channels.append(producer.channel)
+        if 'SYNC_' in ptype.name:
+            self.channels.append(producer.channel)
         return producer
 
     def declare_consumer(self, coating, ptype):
@@ -205,7 +223,8 @@ class Pokeman(AbstractPokeman):
             ptype=ptype
         )
         consumer = foreman.deliver_consumer()
-        self.channels.append(consumer.channel)
+        if 'SYNC_' in ptype.name:
+            self.channels.append(consumer.channel)
         return consumer
 
     def declare_router(self):

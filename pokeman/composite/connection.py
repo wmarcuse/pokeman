@@ -155,7 +155,7 @@ class AbstractConnection(ABC):
                 context['channel'].close()
 
     @abstractmethod
-    def connect(self, poker_id):
+    def connect(self, **kwargs):
         """
         Abstract connect method.
         """
@@ -178,7 +178,7 @@ class Connection(AbstractConnection):
     The Blocking composite connection with the AMQP broker.
     """
 
-    def connect(self, poker_id):
+    def connect(self):
         """
         This method connects to AMQP broker, and sets the object connection variable.
 
@@ -197,10 +197,7 @@ class Connection(AbstractConnection):
             AMQPConnectionError that is the result of AMQP broker still in starting up
             phase.
         """
-        LOGGER.debug('Pokeman {POKER_ID} connecting to AMQP broker'.format(
-            POKER_ID=poker_id
-        )
-        )
+        LOGGER.debug('Pokeman connecting to AMQP broker')
         parameters = None
         connected = False
         if self.cp.method == ConnectionType.URL:
@@ -260,7 +257,7 @@ class SelectConnection(AbstractConnection):
     """
     The Selecting composite connection with the AMQP broker.
     """
-    def connect(self, poker_id):
+    def connect(self, on_open_callback, on_open_error, on_close_callback):
         """
         This method connects to AMQP broker, and sets the object connection variable.
 
@@ -276,10 +273,7 @@ class SelectConnection(AbstractConnection):
             AMQPConnectionError that is the result of AMQP broker still in starting up
             phase.
         """
-        LOGGER.debug('Pokeman {POKER_ID} connecting to AMQP broker'.format(
-            POKER_ID=poker_id
-        )
-        )
+        LOGGER.debug('Pokeman connecting to AMQP broker')
         parameters = None
         connected = False
         if self.cp.method == ConnectionType.URL:
@@ -304,7 +298,10 @@ class SelectConnection(AbstractConnection):
             retries += 1
             try:
                 _connection = pika.SelectConnection(
-                    parameters=parameters
+                    parameters=parameters,
+                    on_open_callback=on_open_callback,
+                    on_open_error_callback=on_open_error,
+                    on_close_callback=on_close_callback
                 )
             # TODO: Too broad exception handling here, zoom-in
             except AttributeError:
