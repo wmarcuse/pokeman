@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 
 import json
+from pika import BlockingConnection, SelectConnection
 from pika.exceptions import ChannelClosedByBroker
 
 from pokeman.amqp_resources.globals import AbstractExchange, AbstractQueue, Exchange, Queue
@@ -326,6 +327,14 @@ class ResourceManager:
         self._connection = connection
         self.resource_exists = False
 
+    def get_channel(self):
+        channel = None
+        if self._connection.__class__.__name__ == BlockingConnection.__name__:
+            channel = self._connection.channel()
+        elif self._connection.__class__.__name__ == SelectConnection.__name__:
+            self._connection.channel(on_open_callback=lambda ch: ch)
+        return channel
+
     def pick_builder(self, blueprint):
         """
         This method picks the right builder for the provided resource blueprint.
@@ -344,13 +353,13 @@ class ResourceManager:
             raise ValueError('The provided resource is not valid')
 
         self.resource_exists = self._templates[blueprint['type']]['checker'](
-            channel=self._connection.channel(),
+            channel=self.get_channel(),
             blueprint=blueprint
         ).exists
 
         if self.resource_exists is False:
             self.builder = self._templates[blueprint['type']]['builder'](
-                channel=self._connection.channel(),
+                channel=self.get_channel(),
                 blueprint=blueprint
             )
         else:

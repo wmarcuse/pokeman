@@ -1,4 +1,4 @@
-from pokeman import Pokeman, BasicConnection, Exchange, Queue, RoutingKey
+from pokeman import Pokeman, ConnectionParameters, Exchange, Queue, RoutingKey
 from pokeman.coatings import BasicMessage, Ptypes
 
 # Always, first declare the Pokeman
@@ -6,10 +6,10 @@ from pokeman.coatings import BasicMessage, Ptypes
 poker = Pokeman()
 
 # Set the connection parameters
-connection_parameters = BasicConnection(connstr='amqp://guest:guest@localhost:5672')
+connection_parameters = ConnectionParameters(connstr='amqp://guest:guest@localhost:5672')
 
 # Apply the connection parameters to the Pokeman
-poker.connection_parameters(composite=connection_parameters)
+poker.set_parameters(connection=connection_parameters)
 
 # Start poking around, by connecting the Pokeman with your AMQP broker
 poker.start()
@@ -32,5 +32,5 @@ producer_1 = poker.declare_producer(coating=basic_message_coating, ptype=Ptypes.
 
 producer_1.publish(message={"a": 1})
 
-poker.delete_attached_resources()
+# poker.delete_attached_resources()
 poker.stop()

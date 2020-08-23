@@ -494,7 +494,7 @@ class SynchronousConsumerBuilder(AbstractSynchronousConsumerBuilder):
             self.setup_exchange()
             self.setup_queue()
             self.setup_callback_method()
-            self.setup_qos()
+            # self.setup_qos()
             self.set_current_context(channel_id=_channel_id, value=False)
 
     def set_current_context(self, channel_id, value):
@@ -578,7 +578,6 @@ class SynchronousConsumer:
         self._consuming = False
         self._consumer_tag = None
 
-
     def set_qos(self):
         self.channel.basic_qos(
             prefetch_count=self.qos
@@ -594,6 +593,7 @@ class SynchronousConsumer:
         self.callback_method(body, headers)
 
     def _start_consuming(self):
+        self.set_qos()
         self.add_on_cancel_callback()
         self._consuming = True
         self._consumer_tag = self.channel.basic_consume(

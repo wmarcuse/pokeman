@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 
 import pika
 import time
+from uuid import uuid4
 
 import logging
 from pokeman.composite.config.configs import BasicConfig
@@ -15,9 +16,15 @@ class ConnectionType(Enum):
     HOST = {'type': 'HOST', 'format': "<resource-dns>"}
 
 
-class AbstractConnection(ABC):
+class ChannelStatus(Enum):
+    INACTIVE = 0x0
+    ACTIVE = 0x1
+    CLOSED = 0x2
+
+
+class AbstractConnectionParameters(ABC):
     """
-    Abstract connection composite structure.
+    Abstract connection parameters class
     """
 
     def __init__(self, connstr, method=ConnectionType.URL, username='guest', password='guest', config=BasicConfig()):
@@ -39,11 +46,11 @@ class AbstractConnection(ABC):
         :param config: The provided connection configuration object.
         :type config: BasicConfig
         """
-        self._connection_string = connstr
-        self._method = method
-        self._username = username
-        self._password = password
-        self._config = config
+        self.connection_string = connstr
+        self.method = method
+        self.username = username
+        self.password = password
+        self.config = config
 
     def _append_url_parameters(self, uri):
         """
@@ -62,9 +69,9 @@ class AbstractConnection(ABC):
         """
         parameters = '?'
         config = {
-            'connection_attempts': self._config.CONNECTION_ATTEMPTS,
-            'heartbeat': self._config.HEARTBEAT,
-            'retry_delay': self._config.RETRY_DELAY
+            'connection_attempts': self.config.CONNECTION_ATTEMPTS,
+            'heartbeat': self.config.HEARTBEAT,
+            'retry_delay': self.config.RETRY_DELAY
         }
         for param, value in config.items():
             if parameters != '?':
@@ -90,6 +97,24 @@ class AbstractConnection(ABC):
         LOGGER.debug('Resolving {CONNECTION} uri parameters OK!'.format(CONNECTION=self.__class__.__name__))
         return resolved_uri
 
+
+class AbstractConnection(ABC):
+    """
+    Abstract connection composite structure.
+    """
+
+    def __init__(self, parameters):
+        """
+        Abstract initialization method for the connection object.
+
+        :param parameters: The provided connection parameters.
+        :type parameters: ConnectionParameters
+
+        """
+        self.cp = parameters
+        self.connection = None
+        self.channels = {}
+
     @abstractmethod
     def connect(self, poker_id):
         """
@@ -98,55 +123,25 @@ class AbstractConnection(ABC):
         pass  # pragma:
 
     @abstractmethod
-    def disconnect(self, connection):
+    def disconnect(self):
         """
         Abstract disconnect method.
-
-        :param connection: The provided connection.
-        :type connection: pokeman.Pokeman.connection
         """
         pass
 
+    @abstractmethod
+    def open_channel(self):
+        pass
 
-class BasicConnection(AbstractConnection):
+
+class ConnectionParameters(AbstractConnectionParameters):
+    pass
+
+
+class Connection(AbstractConnection):
     """
     The Blocking composite connection with the AMQP broker.
     """
-
-    # def __init__(self, connstr, method=ConnectionType.URL, username='guest', password='guest', config=None):
-    #     """
-    #     Setup the connection object, passing in the connection
-    #     string and the connection method to connect to AMQP broker.
-    #
-    #     Note that the connection itself is not instantiated, this is
-    #     done by a Pokeman instance. Therefore this connection configuration
-    #     object can be passed to multiple Pokeman's.
-    #
-    #     :param connstr: The string for connecting to AMQP broker, depends on the method.
-    #     :type connstr: str
-    #
-    #     :param method: The connection method as defined in the ConnectionType class.
-    #     :type method: ConnectionType
-    #
-    #     :param username: The username if the connection method is not URL.
-    #     :type username: str
-    #
-    #     :param password: The password if the connection method is not URL.
-    #     :type password: str
-    #
-    #     :param config: The configuration for the AMQP broker connection.
-    #     :type config: pokeman.composite.config.*
-    #
-    #     .. note::
-    #         If the connection string is an url it should look something like this:
-    #         *amqp://guest:guest@localhost:5672*
-    #
-    #     .. note::
-    #         The self.config variable is declared global, in this way the broker/producer
-    #         settings can be changed during loops and runtime. The config settings are
-    #         defined global/not-global by their '_' prefix in the key.
-    #     """
-    #     super().__init__(connstr=connstr, method=method, username=username, password=password, config=config)
 
     def connect(self, poker_id):
         """
@@ -173,20 +168,20 @@ class BasicConnection(AbstractConnection):
         )
         parameters = None
         connected = False
-        if self._method == ConnectionType.URL:
+        if self.cp.method == ConnectionType.URL:
             parameters = pika.URLParameters(
-                url=self.resolve_uri_parameters(uri=self._connection_string)
+                url=self.cp.resolve_uri_parameters(uri=self.cp.connection_string)
             )
-        elif self._method == ConnectionType.HOST:
+        elif self.cp.method == ConnectionType.HOST:
             parameters = pika.ConnectionParameters(
-                host=self._connection_string,
+                host=self.cp.connection_string,
                 credentials=pika.credentials.PlainCredentials(
-                    username=self._username,
-                    password=self._password,
+                    username=self.cp.username,
+                    password=self.cp.password,
                 ),
-                connection_attempts=self._config.CONNECTION_ATTEMPTS,
-                heartbeat=self._config.HEARTBEAT,
-                retry_delay=self._config.RETRY_DELAY
+                connection_attempts=self.cp.config.CONNECTION_ATTEMPTS,
+                heartbeat=self.cp.config.HEARTBEAT,
+                retry_delay=self.cp.config.RETRY_DELAY
             )
         retries = 0
         _connection = None
@@ -200,7 +195,7 @@ class BasicConnection(AbstractConnection):
                 raise AttributeError('The connection object has no attribute close')
             else:
                 LOGGER.debug('Pokeman connecting to AMQP broker OK!')
-                return _connection
+                self.connection = _connection
         # TODO MAYBE: _connection.add_on_connection_blocked_callback(self.on_connection_blocked)
         #   def on_connection_blocked(self, _unused_connection, _unused_fram):
         #       """
@@ -209,24 +204,60 @@ class BasicConnection(AbstractConnection):
         #       """
         #       pass
 
-    def disconnect(self, connection):
+    def disconnect(self):
         """
         This method disconnects the connection with the AMQP broker.
-
-        :param connection: The provided connection.
-        :type connection: pokeman.Pokeman.connection
         """
-        if connection is not None:
+        if self.connection is not None:
             LOGGER.debug('Closing Pokeman connection')
             try:
-                connection.close()
+                self.connection.close()
             except Exception:
                 LOGGER.exception('Closing Pokeman connection FAILED!')
                 raise ConnectionError('Closing Pokeman connection FAILED!')
             else:
-                if connection is not None and not connection.is_closed:
+                if self.connection is not None and not self.connection.is_closed:
                     raise ConnectionError('Closing Pokeman connection FAILED!')
                 LOGGER.debug('Closing Pokeman connection OK!')
+
+    def set_channel_status(self, channel_id, status):
+        """
+        This method sets the channel status.
+
+        :param channel_id: The channel ID
+        :type channel_id: str
+
+        :param status: The channel status
+        :type status: ChannelStatus
+        """
+        self.channels[channel_id]['status'] = status
+
+    def open_channel(self):
+        """
+        This method opens a new channel for the connection.
+
+        :return: The channel ID
+        :rtype: str
+        """
+        channel_id = str(uuid4())
+        self.channels[channel_id]['channel'] = self.connection.channel()
+        self.set_channel_status(channel_id=channel_id, status=ChannelStatus.INACTIVE)
+        return channel_id
+
+    def close_channel(self, channel_id):
+        """
+        This method closes a new channel for the connection.
+        """
+        self.channels[channel_id]['channel'].close()
+        self.set_channel_status(channel_id=channel_id, status=ChannelStatus.CLOSED)
+
+    def close_all_channels(self):
+        """
+        This method closes all the open channels for the connection.
+        """
+        for channel, context in self.channels.items():
+            if context['status'] == ChannelStatus.INACTIVE or context['status'] == ChannelStatus.ACTIVE:
+                context['channel'].close()
 
 
 class SelectConnection(AbstractConnection):

@@ -1,4 +1,4 @@
-from pokeman import Pokeman, BasicConnection, Exchange, Queue, RoutingKey
+from pokeman import Pokeman, ConnectionParameters, Exchange, Queue, RoutingKey
 from pokeman.coatings import PollingEndpoint, Ptypes
 
 # Always, first declare the Pokeman
@@ -6,10 +6,11 @@ from pokeman.coatings import PollingEndpoint, Ptypes
 poker = Pokeman()
 
 # Set the connection parameters
-connection_parameters = BasicConnection(connstr='amqp://guest:guest@localhost:5672')
+# connection_parameters = BasicConnection(connstr='amqp://guest:guest@localhost:5672')
+connection_parameters = Connection(connstr='amqp://guest:guest@localhost:5672')
 
 # Apply the connection parameters to the Pokeman
-poker.connection_parameters(composite=connection_parameters)
+poker.set_parameters(connection=connection_parameters)
 
 # Start poking around, by connecting the Pokeman with your AMQP broker
 poker.start()
@@ -37,3 +38,5 @@ polling_endpoint_coating = PollingEndpoint(
 )
 
 consumer_1 = poker.declare_consumer(coating=polling_endpoint_coating, ptype=Ptypes.SYNC_CONSUMER)
+consumer_1._start_consuming()
+
