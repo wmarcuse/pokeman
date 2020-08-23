@@ -7,7 +7,7 @@ poker = Pokeman()
 
 # Set the connection parameters
 # connection_parameters = BasicConnection(connstr='amqp://guest:guest@localhost:5672')
-connection_parameters = Connection(connstr='amqp://guest:guest@localhost:5672')
+connection_parameters = ConnectionParameters(connstr='amqp://guest:guest@localhost:5672')
 
 # Apply the connection parameters to the Pokeman
 poker.set_parameters(connection=connection_parameters)

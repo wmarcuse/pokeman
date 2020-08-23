@@ -5,8 +5,8 @@ import atexit
 import os
 
 import pokeman.amqp_resources.heapq as _heapq_
-from pokeman.composite.connection import Connection
-from pokeman import coatings
+from pokeman.composite.connection import Connection, SelectConnection
+from pokeman.coatings.ptypes import Ptypes
 from pokeman.coatings.builders import Foreman
 from pokeman.amqp_resources.builders import ResourceManager
 
@@ -27,22 +27,21 @@ class AbstractPokeman(ABC):
         """
         from pokeman import _current_os
         LOGGER.debug('Initializing Pokeman on current os: {OS}'.format(OS=_current_os))
-        self.poker_id = str(uuid4())
+        self.POKER_ID = str(uuid4())
         self.connection_parameters = None
+        self.MSCID = 'main_{POKER_ID}'.format(POKER_ID=self.POKER_ID)
         self.connections = {
             'sync': {
-                'main': None
+                self.MSCID: None
             },
-            'async': {
-                'main': None
-            }
+            'async': {}
         }
-        self.MSC = lambda: self.connections['sync']['main']
-        self.MAC = lambda: self.connections['async']['main']
+
+        self.MSC = lambda: self.connections['sync'][self.MSCID]
         self._declared = False
         self.channels = []
         self.cleaned_up = False
-        _heapq_.ResourceHeapQ.create_database(poker_id=self.poker_id)
+        _heapq_.ResourceHeapQ.create_database(poker_id=self.POKER_ID)
         atexit.register(self.cleanup)
         LOGGER.debug('Initializing Pokeman on current os: {OS} OK!'.format(OS=_current_os))
 
@@ -99,8 +98,18 @@ class Pokeman(AbstractPokeman):
     def set_parameters(self, connection):
         self.connection_parameters = connection
 
-    def set_sync_connection(self, name):
-        self.connections['sync'][name] = Connection(parameters=self.connection_parameters)
+    def set_sync_connection(self, main=False):
+        if main:
+            cid = self.MSCID
+        else:
+            cid = str(uuid4())
+        self.connections['sync'][cid] = Connection(parameters=self.connection_parameters)
+        return cid
+
+    def set_async_connection(self):
+        cid = str(uuid4())
+        self.connections['async'][cid] = SelectConnection(parameters=self.connection_parameters)
+        return cid
 
     def start(self):
         """
@@ -108,8 +117,8 @@ class Pokeman(AbstractPokeman):
         with the AMQP broker to itself.
         """
         if self.connection_parameters is not None:
-            self.set_sync_connection(name='main')
-            self.MSC().connect(poker_id=self.poker_id)
+            self.set_sync_connection(main=True)
+            self.MSC().connect(poker_id=self.POKER_ID)
         else:
             raise AttributeError('No connection parameters set for the Pokeman.')
 
@@ -132,7 +141,18 @@ class Pokeman(AbstractPokeman):
 
     def apply_resources(self):
         if self.MSC() is not None:
-            _heapq_.ResourceHeapQ.apply_resources(connection=self.MSC().connection, poker_id=self.poker_id)
+            _heapq_.ResourceHeapQ.apply_resources(connection=self.MSC().connection, poker_id=self.POKER_ID)
+        else:
+            raise ConnectionError('No active connection set. Make sure to start the Pokeman first.')
+        
+    def _set_coating_ptype_connection(self, ptype):
+        if self.MSC() is not None:
+            if 'SYNC_' in ptype.name:
+                return self.MSC().connection
+            elif 'ASYNC_' in ptype.name:
+                cid = self.set_async_connection()
+                self.connections['async'][cid].connect(poker_id=self.POKER_ID)
+                return self.connections['async'][cid].connection
         else:
             raise ConnectionError('No active connection set. Make sure to start the Pokeman first.')
 
@@ -149,17 +169,18 @@ class Pokeman(AbstractPokeman):
 
         :return: The producer
         """
-        if self.MSC() is not None:
-            _coating = coating
-            _coating.exchange = coating.exchange(_pkid=self)
-            self.apply_resources()
-            foreman = Foreman()
-            foreman.pick_builder(connection=self.MSC().connection, coating=_coating, ptype=ptype)
-            producer = foreman.deliver_producer()
-            self.channels.append(producer.channel)
-            return producer
-        else:
-            raise ConnectionError('No active connection set. Make sure to start the Pokeman first.')
+        _coating = coating
+        _coating.exchange = coating.exchange(_pkid=self)
+        self.apply_resources()
+        foreman = Foreman()
+        foreman.pick_builder(
+            connection=self._set_coating_ptype_connection(ptype=ptype),
+            coating=_coating,
+            ptype=ptype
+        )
+        producer = foreman.deliver_producer()
+        self.channels.append(producer.channel)
+        return producer
 
     def declare_consumer(self, coating, ptype):
         """
@@ -174,17 +195,18 @@ class Pokeman(AbstractPokeman):
 
         :return: The producer
         """
-        if self.MSC() is not None:
-            _coating = coating
-            _coating.exchange = coating.exchange(_pkid=self)
-            self.apply_resources()
-            foreman = Foreman()
-            foreman.pick_builder(connection=self.MSC().connection, coating=_coating, ptype=ptype)
-            consumer = foreman.deliver_consumer()
-            self.channels.append(consumer.channel)
-            return consumer
-        else:
-            raise ConnectionError('No active connection set. Make sure to start the Pokeman first.')
+        _coating = coating
+        _coating.exchange = coating.exchange(_pkid=self)
+        self.apply_resources()
+        foreman = Foreman()
+        foreman.pick_builder(
+            connection=self._set_coating_ptype_connection(ptype=ptype),
+            coating=_coating,
+            ptype=ptype
+        )
+        consumer = foreman.deliver_consumer()
+        self.channels.append(consumer.channel)
+        return consumer
 
     def declare_router(self):
         raise NotImplementedError(
@@ -232,7 +254,7 @@ class Pokeman(AbstractPokeman):
         """
         if self.MSC() is not None:
             resource_manager = ResourceManager(connection=self.MSC().connection)
-            resource_manager.delete_attached_resources(poker_id=self.poker_id)
+            resource_manager.delete_attached_resources(poker_id=self.POKER_ID)
         else:
             raise ConnectionError('No active connection set. Make sure to start the Pokeman first.')
 
@@ -244,9 +266,9 @@ class Pokeman(AbstractPokeman):
         if self.connections is not None:
             if self.cleaned_up is False:
                 try:
-                    LOGGER.debug('Cleaning up Pokeman {POKER_ID}'.format(POKER_ID=self.poker_id))
-                    # _heapq_.ResourceHeapQ.remove_heapq(poker_id=self.poker_id)
-                    LOGGER.debug('Cleaning up Pokeman {POKER_ID} OK!'.format(POKER_ID=self.poker_id))
+                    LOGGER.debug('Cleaning up Pokeman {POKER_ID}'.format(POKER_ID=self.POKER_ID))
+                    # _heapq_.ResourceHeapQ.remove_heapq(poker_id=self.POKER_ID)
+                    LOGGER.debug('Cleaning up Pokeman {POKER_ID} OK!'.format(POKER_ID=self.POKER_ID))
                     self.cleaned_up = True
                 except FileNotFoundError:
                     pass

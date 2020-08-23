@@ -115,6 +115,45 @@ class AbstractConnection(ABC):
         self.connection = None
         self.channels = {}
 
+    def set_channel_status(self, channel_id, status):
+        """
+        This method sets the channel status.
+
+        :param channel_id: The channel ID
+        :type channel_id: str
+
+        :param status: The channel status
+        :type status: ChannelStatus
+        """
+        self.channels[channel_id]['status'] = status
+
+    def open_channel(self):
+        """
+        This method opens a new channel for the connection.
+
+        :return: The channel ID
+        :rtype: str
+        """
+        channel_id = str(uuid4())
+        self.channels[channel_id]['channel'] = self.connection.channel()
+        self.set_channel_status(channel_id=channel_id, status=ChannelStatus.INACTIVE)
+        return channel_id
+
+    def close_channel(self, channel_id):
+        """
+        This method closes a new channel for the connection.
+        """
+        self.channels[channel_id]['channel'].close()
+        self.set_channel_status(channel_id=channel_id, status=ChannelStatus.CLOSED)
+
+    def close_all_channels(self):
+        """
+        This method closes all the open channels for the connection.
+        """
+        for channel, context in self.channels.items():
+            if context['status'] == ChannelStatus.INACTIVE or context['status'] == ChannelStatus.ACTIVE:
+                context['channel'].close()
+
     @abstractmethod
     def connect(self, poker_id):
         """
@@ -127,10 +166,6 @@ class AbstractConnection(ABC):
         """
         Abstract disconnect method.
         """
-        pass
-
-    @abstractmethod
-    def open_channel(self):
         pass
 
 
@@ -220,45 +255,6 @@ class Connection(AbstractConnection):
                     raise ConnectionError('Closing Pokeman connection FAILED!')
                 LOGGER.debug('Closing Pokeman connection OK!')
 
-    def set_channel_status(self, channel_id, status):
-        """
-        This method sets the channel status.
-
-        :param channel_id: The channel ID
-        :type channel_id: str
-
-        :param status: The channel status
-        :type status: ChannelStatus
-        """
-        self.channels[channel_id]['status'] = status
-
-    def open_channel(self):
-        """
-        This method opens a new channel for the connection.
-
-        :return: The channel ID
-        :rtype: str
-        """
-        channel_id = str(uuid4())
-        self.channels[channel_id]['channel'] = self.connection.channel()
-        self.set_channel_status(channel_id=channel_id, status=ChannelStatus.INACTIVE)
-        return channel_id
-
-    def close_channel(self, channel_id):
-        """
-        This method closes a new channel for the connection.
-        """
-        self.channels[channel_id]['channel'].close()
-        self.set_channel_status(channel_id=channel_id, status=ChannelStatus.CLOSED)
-
-    def close_all_channels(self):
-        """
-        This method closes all the open channels for the connection.
-        """
-        for channel, context in self.channels.items():
-            if context['status'] == ChannelStatus.INACTIVE or context['status'] == ChannelStatus.ACTIVE:
-                context['channel'].close()
-
 
 class SelectConnection(AbstractConnection):
     """
@@ -267,9 +263,6 @@ class SelectConnection(AbstractConnection):
     def connect(self, poker_id):
         """
         This method connects to AMQP broker, and sets the object connection variable.
-
-        :return: The pika connection handle.
-        :rtype: pika.BlockingConnection
 
         .. note::
             The connection parameters are set depending on the connection type:
@@ -289,20 +282,20 @@ class SelectConnection(AbstractConnection):
         )
         parameters = None
         connected = False
-        if self._method == ConnectionType.URL:
+        if self.cp.method == ConnectionType.URL:
             parameters = pika.URLParameters(
-                url=self.resolve_uri_parameters(uri=self._connection_string)
+                url=self.cp.resolve_uri_parameters(uri=self.cp.connection_string)
             )
-        elif self._method == ConnectionType.HOST:
+        elif self.cp.method == ConnectionType.HOST:
             parameters = pika.ConnectionParameters(
-                host=self._connection_string,
+                host=self.cp.connection_string,
                 credentials=pika.credentials.PlainCredentials(
-                    username=self._username,
-                    password=self._password,
+                    username=self.cp.username,
+                    password=self.cp.password,
                 ),
-                connection_attempts=self._config.CONNECTION_ATTEMPTS,
-                heartbeat=self._config.HEARTBEAT,
-                retry_delay=self._config.RETRY_DELAY
+                connection_attempts=self.cp.config.CONNECTION_ATTEMPTS,
+                heartbeat=self.cp.config.HEARTBEAT,
+                retry_delay=self.cp.config.RETRY_DELAY
             )
         retries = 0
         _connection = None
@@ -318,23 +311,20 @@ class SelectConnection(AbstractConnection):
                 raise AttributeError('The connection object has no attribute close')
             else:
                 LOGGER.debug('Pokeman connecting to AMQP broker OK!')
-                return _connection
+                self.connection = _connection
 
-    def disconnect(self, connection):
+    def disconnect(self):
         """
         This method disconnects the connection with the AMQP broker.
-
-        :param connection: The provided connection.
-        :type connection: pokeman.Pokeman.connection
         """
-        if connection is not None and not connection.is_closing and not connection.is_closed:
+        if self.connection is not None and not self.connection.is_closing and not self.connection.is_closed:
             LOGGER.debug('Closing Pokeman connection')
             try:
-                connection.close()
+                self.connection.close()
             except Exception:
                 LOGGER.exception('Closing Pokeman connection FAILED!')
                 raise ConnectionError('Closing Pokeman connection FAILED!')
             else:
-                if connection is not None and not connection.is_closed:
+                if self.connection is not None and not self.connection.is_closed:
                     raise ConnectionError('Closing Pokeman connection FAILED!')
                 LOGGER.debug('Closing Pokeman connection OK!')

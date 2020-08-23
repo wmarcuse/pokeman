@@ -32,5 +32,5 @@ producer_1 = poker.declare_producer(coating=basic_message_coating, ptype=Ptypes.
 
 producer_1.publish(message={"a": 1})
 
-# poker.delete_attached_resources()
+poker.delete_attached_resources()
 poker.stop()

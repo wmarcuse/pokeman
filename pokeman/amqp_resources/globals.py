@@ -146,7 +146,7 @@ class Exchange(AbstractExchange):
         elif specific_poker is None:
             return None
         else:
-            return specific_poker.poker_id
+            return specific_poker.POKER_ID
 
 
 class RoutingKey(AbstractRoutingKey):
@@ -257,7 +257,7 @@ class Queue(AbstractQueue):
         if specific_poker is self._SENTINEL:
             return None
         elif lambda_call is False:
-            return specific_poker.poker_id
+            return specific_poker.POKER_ID
         elif lambda_call is True and specific_poker == self.specific_poker:
             return None
         elif lambda_call is True and specific_poker != self.specific_poker:

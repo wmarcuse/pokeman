@@ -673,7 +673,7 @@ class Foreman:
         """
         if self.builder is not None:
             raise SyntaxError('The {MANAGER} has already picked a builder. Assign some work to the builder first'
-                              'or destroy the current builder with Foreman.destroy_builder()'.format(
+                              'or destroy the current builder with {MANAGER}.destroy_builder()'.format(
                 MANAGER=self.__class__.__name__
             )
             )
