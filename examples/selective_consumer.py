@@ -1,5 +1,6 @@
 from pokeman import Pokeman, ConnectionParameters, Exchange, Queue, RoutingKey
-from pokeman.coatings import PollingConsumer, Ptypes
+from pokeman.coatings import BasicMessage, SelectiveConsumer, Ptypes
+import time
 
 # Always, first declare the Pokeman
 # The AMQP resources will be attached to the first (default) Pokeman instance
@@ -26,6 +27,18 @@ my_queue = Queue(queue_name='my_queue', exchange=my_exchange, routing_key=my_rou
 poker.apply_resources()
 
 
+# Set up a basic message coating to send a specific message
+basic_message_coating = BasicMessage(app_id='MY_APP', exchange=my_exchange, routing_key=my_routing_key)
+
+# Declare the producer to send a message
+sync_producer_1 = poker.declare_producer(coating=basic_message_coating, ptype=Ptypes.SYNC_PRODUCER)
+
+# Publish a message and fetch its correlation ID
+message_context = sync_producer_1.publish(message={"a": 1})
+specific_correlation_id = message_context['correlation_id']
+
+
+# Set a callback method
 def callback_method(body, properties):
     print('CALLBACK METHOD CALLED')
     print('CORRELATION_ID: {CORRELATION_ID}'.format(CORRELATION_ID=properties.correlation_id))
@@ -33,19 +46,23 @@ def callback_method(body, properties):
     print('HEADERS: {HEADERS}'.format(HEADERS=properties.headers))
 
 
-polling_consumer_coating = PollingConsumer(
+# Set up a basic consumer coating and provide it with the callback method
+# Also provide it with a specific correlation ID to listen for
+selective_consumer_coating = SelectiveConsumer(
     exchange=my_exchange,
     queue=my_queue,
     callback_method=callback_method,
-    qos=1
+    qos=1,
+    correlation_id=specific_correlation_id
 )
-
+print(specific_correlation_id)
 # Declare the consumer
-async_consumer_1 = poker.declare_consumer(coating=polling_consumer_coating, ptype=Ptypes.ASYNC_CONSUMER)
+time.sleep(10)
+sync_consumer_1 = poker.declare_consumer(coating=selective_consumer_coating, ptype=Ptypes.SYNC_CONSUMER)
 
 # Start consuming
-# The consumer will keep listening until it is cancelled
-async_consumer_1.start()
+# The consumer will keep looking for new messages, you can optionally limit this with a maximum message count
+sync_consumer_1.start()
 
 # Stop the Pokeman
 poker.stop()

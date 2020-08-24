@@ -10,7 +10,9 @@ class Ptypes(Enum):
     SYNC_CONSUMER = 0x40
 
     __BasicMessage__ = ~ASYNC_PRODUCER & SYNC_PRODUCER
-    __PollingEndpoint__ = ASYNC_CONSUMER & ~SYNC_CONSUMER
+    __PollingConsumer__ = ASYNC_CONSUMER & ~SYNC_CONSUMER
+    __BasicMessageConsumer__ = ~ASYNC_CONSUMER & SYNC_CONSUMER
+    __SelectiveConsumer__ = ~ASYNC_CONSUMER & SYNC_CONSUMER
 
     @classmethod
     def _map(cls, eip, ptype):

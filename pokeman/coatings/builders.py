@@ -49,7 +49,7 @@ class AbstractSynchronousProducerBuilder(ABC):
 
 class AbstractAsynchronousConsumerBuilder(ABC):
     """
-    Abstract base class for a synchronous consumer builder.
+    Abstract base class for a asynchronous consumer builder.
     """
 
     @abstract_attribute
@@ -81,9 +81,45 @@ class AbstractAsynchronousConsumerBuilder(ABC):
         pass
 
 
+class AbstractSynchronousConsumerBuilder(ABC):
+    """
+    Abstract base class for a synchronous consumer builder.
+    """
+
+    @abstract_attribute
+    def consumer(self):
+        pass
+
+    @abstractmethod
+    def digest_blueprint(self):
+        pass
+
+    @abstractmethod
+    def open_channel(self):
+        pass
+
+    @abstractmethod
+    def setup_exchange(self):
+        pass
+
+    @abstractmethod
+    def setup_queue(self):
+        pass
+
+    @abstractmethod
+    def setup_callback_method(self):
+        pass
+
+    @abstractmethod
+    def setup_qos(self):
+        pass
+
+    @abstractmethod
+    def elevate_setup(self):
+        pass
+
+
 class SynchronousProducerBuilder(AbstractSynchronousProducerBuilder):
-    BLUEPRINT = 0x0
-    INSTANCE = 0x1
 
     def __init__(self, connection, blueprint):
         """
@@ -254,8 +290,6 @@ class SynchronousProducer:
 
         if not correlation_id:
             correlation_id = str(uuid4())
-        # if not timestamp:
-        #     timestamp = str(int(time.time()))
 
         properties = pika.BasicProperties(
             content_type=content_type,
@@ -273,8 +307,6 @@ class SynchronousProducer:
             app_id=self.APP_ID,
             cluster_id=cluster_id
         )
-
-        message = message
         try:
             self.channel.basic_publish(
                 exchange=self.exchange,
@@ -297,14 +329,11 @@ class SynchronousProducer:
         self._message_number += 1
         LOGGER.debug("Published message # {MESSAGE_NUMBER}".format(MESSAGE_NUMBER=self._message_number))
         return {
-            "correlation_id": correlation_id,
-            "timestamp": timestamp
+            "correlation_id": correlation_id
         }
 
 
 class AsynchronousConsumerBuilder(AbstractAsynchronousConsumerBuilder):
-    BLUEPRINT = 0x0
-    INSTANCE = 0x1
 
     def __init__(self, connection, blueprint):
         """
@@ -403,7 +432,7 @@ class AsynchronousConsumer:
         self.channel = None
         self.exchange = None
         self.queue = None
-        self.callback_method = lambda body, headers: None
+        self.callback_method = lambda body, properties: None
         self.qos = 1
         self.was_consuming = False
         self._consuming = False
@@ -412,7 +441,6 @@ class AsynchronousConsumer:
 
     def connect(self):
         try:
-            print(self.connection_ob)
             self.connection_ob.connect(
                 on_open_callback=self.on_connection_open,
                 on_open_error=self.on_connection_open_error,
@@ -565,8 +593,9 @@ class AsynchronousConsumer:
         LOGGER.debug("Issuing consumer related RPC commands")
         self.add_on_cancel_callback()
         self._consumer_tag = self.channel.basic_consume(
-            queue=self.queue, on_message_callback=self.on_message)
-
+            queue=self.queue,
+            on_message_callback=self.on_message
+        )
         self.was_consuming = True
         self._consuming = True
 
@@ -590,14 +619,9 @@ class AsynchronousConsumer:
 
         :param body: The message body.
         :type body: bytes
-
-        .. note::
-            The return statement in the except statement is for avoiding
-            a dead loop when the parsed function fails.
         """
-        headers = properties.headers
         try:
-            self.callback_method(body, headers)
+            self.callback_method(json.loads(body), properties)
             self.acknowledge_message(method.delivery_tag)
         except Exception:
             LOGGER.exception("Asynchronous callback method exception:")
@@ -667,7 +691,6 @@ class AsynchronousConsumer:
         the IOLoop to block and allow the SelectConnection to operate.
         """
         self.connect()
-        print(self.connection)
         self.connection.ioloop.start()
 
     def stop(self):
@@ -690,6 +713,191 @@ class AsynchronousConsumer:
             else:
                 self.connection.ioloop.stop()
             LOGGER.debug("Stopped")
+
+
+class SynchronousConsumerBuilder(AbstractSynchronousConsumerBuilder):
+
+    def __init__(self, connection, blueprint):
+        """
+        This method initializes the consumer builder and sets the
+        connection and the by the Foreman already on compatibility
+        checked build template.
+
+        :param connection: The provided AMQP broker connection that is attached
+        to the Pokeman.
+        :type connection: pokeman.Pokeman.connection
+
+        :param blueprint: The resolved template from the Wingman.
+        :type blueprint: pokeman.coating._resolvers.Wingman._blueprint
+        """
+        self.reset()
+        self.connection = connection
+        self.blueprint = blueprint
+
+    def reset(self):
+        """
+        The production builder is reset on initialization and after a
+        delivery of a consumer.
+        """
+        self._consumer = SynchronousConsumer()
+
+    @property
+    def consumer(self):
+        """
+        When the consumer delivery is invoked, the builder resets itself for
+        a new producing task.
+
+        :return: The built consumer object.
+        :rtype: pokeman.coating._builders.SynchronousConsumer
+        """
+        consumer = self._consumer
+        self.reset()
+        return consumer
+
+    def digest_blueprint(self):
+        """
+        This method envokes blueprint digestion by the builder.
+        It detects if a multistep build process is necessary and
+        sets the channel build context.
+        """
+        LOGGER.debug('{BUILDER} digesting blueprint'.format(BUILDER=self.__class__.__name__))
+        LOGGER.debug('{BUILDER} digesting blueprint OK!'.format(BUILDER=self.__class__.__name__))
+
+    def start_independent_build(self):
+        """
+        This method invokes the standard building process for
+        the consumer builder. The Foreman can invoke custom builds by
+        instructing the builder on it's own.
+        """
+        self.open_channel()
+        self.setup_exchange()
+        self.setup_queue()
+        self.setup_callback_method()
+        self.setup_qos()
+        self.elevate_setup()
+        self.setup_variation()
+
+    def open_channel(self):
+        """
+        This method will open a new channel with AMQP broker and attach
+        it to the producer.
+        """
+        LOGGER.debug('Opening a new channel')
+        new_channel = self.connection.channel()
+        self._consumer.channel = new_channel
+        LOGGER.debug('Opening a new channel OK!')
+
+    def setup_exchange(self):
+        """
+        Set up the exchange on the AMQP broker by declaring the exchange
+        on the current context channel.
+        """
+        _exchange_name = self.blueprint['exchange']
+        LOGGER.debug('Binding exchange {EXCHANGE_NAME} to producer'.format(
+            EXCHANGE_NAME=_exchange_name
+        )
+        )
+        self._consumer.exchange = _exchange_name
+        LOGGER.debug('Binding exchange {EXCHANGE_NAME} to producer OK!'.format(
+            EXCHANGE_NAME=_exchange_name
+        )
+        )
+
+    def setup_queue(self):
+        self._consumer.queue = self.blueprint['queue']
+
+    def setup_callback_method(self):
+        self._consumer.callback_method = self.blueprint['callback_method']
+
+    def setup_qos(self):
+        self._consumer.qos = self.blueprint['qos']
+
+    def setup_variation(self):
+        if 'reference' in self.blueprint:
+            if 'correlation_id' in self.blueprint['reference']:
+                print("SVRC")
+                modified_consumer = self._consumer
+                modified_consumer.correlation_id_reference = self.blueprint['reference']['correlation_id']['value']
+                modified_consumer.start = self.blueprint['reference']['correlation_id']['start_method'].__get__(modified_consumer, type(modified_consumer))
+                modified_consumer.on_message = self.blueprint['reference']['correlation_id']['on_message_method'].__get__(modified_consumer, type(modified_consumer))
+                self._consumer = modified_consumer
+            else:
+                pass
+        else:
+            pass
+
+    def elevate_setup(self):
+        self._consumer.set_qos()
+
+
+class SynchronousConsumer:
+    def __init__(self):
+        self.channel = None
+        self.exchange = None
+        self.queue = None
+        self.callback_method = lambda body, properties: None
+        self.qos = 1
+
+    def set_qos(self):
+        """
+        This method sets up the consumer prefetch to only be delivered
+        one message at a time. The consumer must acknowledge this message
+        before the AMQP broker will deliver another one. Do experiment
+        with different prefetch values to achieve desired performance.
+        """
+        self.channel.basic_qos(prefetch_count=self.qos)
+
+    def start(self, count=-1):
+        current_count = 0
+        while current_count != count:
+            current_count += 1
+            self.start_consuming()
+
+    def start_consuming(self):
+        """
+        This method issues the Basic.Consume RPC command
+        which returns the consumer tag that is used to uniquely identify the
+        consumer with the AMQP broker. The method keeps the value globally to use
+        it when we want to cancel consuming. The on_message method is passed
+        in as a callback pika will invoke when a message is fully received.
+        """
+        self.channel.basic_consume(
+            queue=self.queue,
+            on_message_callback=self.on_message
+        )
+        self.channel.start_consuming()
+
+    def on_message(self, channel, method, properties, body):
+        """
+        Invoked by pika when a message is delivered from the AMQP broker. The
+        channel is passed for convenience. The basic_deliver object that
+        is passed in carries the exchange, routing key, delivery tag and
+        a redelivered flag for the message. The properties passed in is an
+        instance of BasicProperties with the message properties and the body
+        is the message that was sent.
+
+        :param channel: The channel object.
+        :type channel: pika.channel.Channel
+
+        :param method: basic_deliver method.
+        :type method: pika.Spec.Basic.Deliver
+
+        :param properties: The properties.
+        :type properties: pika.Spec.BasicProperties
+
+        :param body: The message body.
+        :type body: bytes
+        """
+        try:
+            self.callback_method(json.loads(body), properties)
+            self.acknowledge_message(method.delivery_tag)
+        except Exception:
+            LOGGER.exception("Synchronous callback method exception:")
+        self.channel.stop_consuming()
+
+    # TODO: Integrate this as a choice
+    def acknowledge_message(self, delivery_tag):
+        self.channel.basic_ack(delivery_tag=delivery_tag)
 
 
 # TODO: Add Template design pattern integration for Asynchonous Producer integration
@@ -730,8 +938,6 @@ class Foreman:
         :param ptype: The provided Ptypes
         :type ptype: pokeman.coating.ptypes.Ptypes
         """
-        print(connection)
-        print("AAA")
         if self.builder is not None:
             raise SyntaxError('The {MANAGER} has already picked a builder. Assign some work to the builder first'
                               'or destroy the current builder with {MANAGER}.destroy_builder()'.format(
@@ -744,6 +950,8 @@ class Foreman:
         ptype_check = Ptypes._map(eip=blueprint["type"], ptype=ptype)
         if ptype_check["map"] == Ptypes.SYNC_PRODUCER:
             self.builder = SynchronousProducerBuilder(connection=connection, blueprint=blueprint)
+        elif ptype_check["map"] == Ptypes.SYNC_CONSUMER:
+            self.builder = SynchronousConsumerBuilder(connection=connection, blueprint=blueprint)
         elif ptype_check["map"] == Ptypes.ASYNC_CONSUMER:
             self.builder = AsynchronousConsumerBuilder(connection=connection, blueprint=blueprint)
         else:

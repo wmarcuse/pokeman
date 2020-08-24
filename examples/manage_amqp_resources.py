@@ -1,4 +1,4 @@
-from pokeman import Pokeman, BasicConnection, Exchange, RoutingKey, Queue
+from pokeman import Pokeman, ConnectionParameters, Exchange, RoutingKey, Queue
 
 
 # Always, first declare the Pokeman
@@ -6,10 +6,10 @@ from pokeman import Pokeman, BasicConnection, Exchange, RoutingKey, Queue
 poker = Pokeman()
 
 # Set the connection parameters
-connection_parameters = BasicConnection(connstr='amqp://guest:guest@localhost:5672')
+connection_parameters = ConnectionParameters(connstr='amqp://guest:guest@localhost:5672')
 
 # Apply the connection parameters to the Pokeman
-poker.connection_parameters(composite=connection_parameters)
+poker.set_parameters(connection=connection_parameters)
 
 # Start poking around, by connecting the Pokeman with your AMQP broker
 poker.start()
@@ -26,6 +26,9 @@ poker.apply_resources()
 
 # Remove AMQP resources attached to the Pokeman
 poker.delete_attached_resources()
+
+# Stop the Pokeman
+poker.stop()
 
 
 

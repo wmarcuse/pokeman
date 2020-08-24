@@ -1,18 +1,18 @@
 from inspect import getfullargspec
 
 from pokeman.coatings.messaging_endpoints._abc_endpoint import AbstractBasicMessagingEndpoint
-from pokeman.amqp_resources.globals import Exchange, Queue
+from pokeman.amqp_resources.globals import Exchange
 
 
-class PollingEndpoint(AbstractBasicMessagingEndpoint):
+class BasicMessageConsumer(AbstractBasicMessagingEndpoint):
     """
     Basic Message Enterprise Integration Pattern for messaging
-    endpoint > Selective Consumer.
+    endpoint > Basic Message Consumer.
 
     A Sentinel is declared default for various pattern parameters,
     as the possible None declaration is a posteriori.
     """
-    _SENTINEL = object()
+    _SENTINEL = Ellipsis
 
     def __init__(
             self,
@@ -61,7 +61,7 @@ class PollingEndpoint(AbstractBasicMessagingEndpoint):
         if callback_method is self._SENTINEL:
             return lambda body: 'No callback method provided'
         else:
-            obligatory_args = ['body', 'headers']
+            obligatory_args = ['body', 'properties']
             for arg in obligatory_args:
                 if arg not in getfullargspec(callback_method).args:
                     raise AttributeError("The provided callback method needs to have the {ARG} argument".format(

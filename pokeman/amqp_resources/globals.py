@@ -82,7 +82,7 @@ class Exchange(AbstractExchange):
     """
     Exchange object.
     """
-    _SENTINEL = object()
+    _SENTINEL = Ellipsis
 
     def __init__(self,
                  exchange_name=_SENTINEL,
@@ -153,7 +153,7 @@ class RoutingKey(AbstractRoutingKey):
     """
     Routing key object.
     """
-    _SENTINEL = object()
+    _SENTINEL = Ellipsis
 
     def __init__(self, key=_SENTINEL):
         """
@@ -175,7 +175,7 @@ class Queue(AbstractQueue):
     """
     Queue object
     """
-    _SENTINEL = object()
+    _SENTINEL = Ellipsis
 
     def __init__(self,
                  queue_name=_SENTINEL,

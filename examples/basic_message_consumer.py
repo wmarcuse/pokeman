@@ -1,11 +1,12 @@
 from pokeman import Pokeman, ConnectionParameters, Exchange, Queue, RoutingKey
-from pokeman.coatings import BasicMessage, Ptypes
+from pokeman.coatings import BasicMessageConsumer, Ptypes
 
 # Always, first declare the Pokeman
 # The AMQP resources will be attached to the first (default) Pokeman instance
 poker = Pokeman()
 
 # Set the connection parameters
+# connection_parameters = BasicConnection(connstr='amqp://guest:guest@localhost:5672')
 connection_parameters = ConnectionParameters(connstr='amqp://guest:guest@localhost:5672')
 
 # Apply the connection parameters to the Pokeman
@@ -24,14 +25,30 @@ my_queue = Queue(queue_name='my_queue', exchange=my_exchange, routing_key=my_rou
 # You can verify i.e. via the RabbitMQ Management plugin that the resources are created http://127.0.0.1:15672/
 poker.apply_resources()
 
-# Set up the basic message coating
-basic_message_coating = BasicMessage(app_id='MY_APP', exchange=my_exchange, routing_key=my_routing_key)
 
-# Declare the producer
-sync_producer_1 = poker.declare_producer(coating=basic_message_coating, ptype=Ptypes.SYNC_PRODUCER)
+# Set a callback method
+def callback_method(body, properties):
+    print('CALLBACK METHOD CALLED')
+    print('CORRELATION_ID: {CORRELATION_ID}'.format(CORRELATION_ID=properties.correlation_id))
+    print('BODY: {BODY}'.format(BODY=body))
+    print('HEADERS: {HEADERS}'.format(HEADERS=properties.headers))
 
-# Publish a message
-sync_producer_1.publish(message={"a": 1})
+
+# Set up a basic consumer coating and provide it with the callback method
+basic_message_consumer_coating = BasicMessageConsumer(
+    exchange=my_exchange,
+    queue=my_queue,
+    callback_method=callback_method,
+    qos=1
+)
+
+# Declare the consumer
+sync_consumer_1 = poker.declare_consumer(coating=basic_message_consumer_coating, ptype=Ptypes.SYNC_CONSUMER)
+
+# Start consuming
+# The consumer will keep looking for new messages, you can optionally limit this with a maximum message count
+sync_consumer_1.start(count=2)
 
 # Stop the Pokeman
 poker.stop()
+

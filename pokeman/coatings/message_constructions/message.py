@@ -16,7 +16,7 @@ class BasicMessage(AbstractBasicMessageConstruction):
     A Sentinel is declared default for various pattern parameters,
     as the possible None declaration is a posteriori.
     """
-    _SENTINEL = object()
+    _SENTINEL = Ellipsis
 
     def __init__(
             self,

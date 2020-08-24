@@ -3,7 +3,8 @@ from uuid import uuid4
 
 # Message Constructions
 from .message_constructions import BasicMessage
-from.messaging_endpoints import PollingEndpoint
+from.messaging_endpoints import PollingConsumer, BasicMessageConsumer, SelectiveConsumer
+from .resolver_attribute_methods.selective_consumer import start, on_message
 
 import logging
 
@@ -119,9 +120,9 @@ class BasicMessageResolver(AbstractMessageConstructionResolver):
         self.blueprint['routing_key'] = self.coating.routing_key
 
 
-class PollingEndpointResolver(AbstractMessagingEndpointResolver):
+class PollingConsumerResolver(AbstractMessagingEndpointResolver):
     """
-    Template resolver for EIP Messaging Endpoint > PollingEndpoint
+    Template resolver for EIP Messaging Endpoint > PollingConsumer
     """
 
     def set_exchange(self):
@@ -140,6 +141,46 @@ class PollingEndpointResolver(AbstractMessagingEndpointResolver):
         self.blueprint['qos'] = self.coating.qos
 
 
+class BasicMessageConsumerResolver(AbstractMessagingEndpointResolver):
+    """
+    Template resolver for EIP Messaging Endpoint > BasicMessageConsumer
+    """
+
+    def set_exchange(self):
+        """
+        This methods sets the exchange in the blueprint.
+        """
+        self.blueprint['exchange'] = self.coating.exchange
+
+    def set_queue(self):
+        self.blueprint['queue'] = self.coating.queue
+
+    def set_callback_method(self):
+        self.blueprint['callback_method'] = self.coating.callback_method
+
+    def set_qos(self):
+        self.blueprint['qos'] = self.coating.qos
+
+
+class SelectiveConsumerResolver(BasicMessageConsumerResolver):
+    """
+    Template resolver for EIP Messaging Endpoint > SelectiveConsumer
+    """
+
+    def __init__(self, coating):
+        super().__init__(coating=coating)
+        self.set_reference()
+
+    def set_reference(self):
+        self.blueprint['reference'] = {
+            'correlation_id': {
+                'value': self.coating.correlation_id,
+                'start_method': start,
+                'on_message_method': on_message
+            }
+        }
+
+
 # TODO MAYBE: Maybe bring the Ptypes validation to the Wingman.
 class Wingman:
     """
@@ -151,7 +192,9 @@ class Wingman:
     # Message Constructions
     _templates = {
         BasicMessage: BasicMessageResolver,
-        PollingEndpoint: PollingEndpointResolver
+        PollingConsumer: PollingConsumerResolver,
+        BasicMessageConsumer: BasicMessageConsumerResolver,
+        SelectiveConsumer: SelectiveConsumerResolver
     }
 
     def __init__(self):

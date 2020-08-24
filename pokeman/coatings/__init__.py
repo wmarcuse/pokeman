@@ -1,5 +1,5 @@
 from .message_constructions import BasicMessage
-from .messaging_endpoints import PollingEndpoint
+from .messaging_endpoints import PollingConsumer, BasicMessageConsumer, SelectiveConsumer
 from .ptypes import Ptypes
 
 __all__ = [
@@ -10,6 +10,6 @@ __all__ = [
     'BasicMessage',
 
     # Messaging Endpoints
-    'PollingEndpoint'
+    'PollingConsumer', 'BasicMessageConsumer', 'SelectiveConsumer'
 
 ]
