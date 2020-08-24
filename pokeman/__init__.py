@@ -1,10 +1,12 @@
 from pokeman.pokeman import Pokeman
 from pokeman.amqp_resources.globals import Exchange, RoutingKey, Queue
-from pokeman.composite import ConnectionParameters, Connection, BasicConfig
 from pokeman import coatings
+from pokeman.composite import ConnectionParameters, Connection, BasicConfig
+from pokeman.coatings import BasicMessage, BasicMessageConsumer, PollingConsumer, SelectiveConsumer, Ptypes
 
 
-__version__ = '0.0.1'
+
+__version__ = '0.1.13'
 
 
 __all__ = [
@@ -16,7 +18,9 @@ __all__ = [
     'ConnectionParameters', 'Connection', 'BasicConfig',
 
     # EIP
-    'coatings']
+    'coatings'
+    # 'BasicMessage', 'BasicMessageConsumer', 'PollingConsumer', 'SelectiveConsumer', 'Ptypes'
+    ]
 
 import platform
 

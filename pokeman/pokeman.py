@@ -4,7 +4,7 @@ from uuid import uuid4
 import atexit
 import os
 
-import pokeman.amqp_resources.heapq as _heapq_
+from pokeman.amqp_resources import heapq as _heapq_
 from pokeman.composite.connection import Connection, SelectConnection
 from pokeman.coatings.ptypes import Ptypes
 from pokeman.coatings.builders import Foreman
@@ -286,7 +286,7 @@ class Pokeman(AbstractPokeman):
             if self.cleaned_up is False:
                 try:
                     LOGGER.debug('Cleaning up Pokeman {POKER_ID}'.format(POKER_ID=self.POKER_ID))
-                    # _heapq_.ResourceHeapQ.remove_heapq(poker_id=self.POKER_ID)
+                    _heapq_.ResourceHeapQ.remove_heapq(poker_id=self.POKER_ID)
                     LOGGER.debug('Cleaning up Pokeman {POKER_ID} OK!'.format(POKER_ID=self.POKER_ID))
                     self.cleaned_up = True
                 except FileNotFoundError:

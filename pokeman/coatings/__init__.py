@@ -1,5 +1,7 @@
-from .message_constructions import BasicMessage
-from .messaging_endpoints import PollingConsumer, BasicMessageConsumer, SelectiveConsumer
+from .message_constructions.message import BasicMessage
+from .messaging_endpoints.basic_message_consumer import BasicMessageConsumer
+from .messaging_endpoints.polling_consumer import PollingConsumer
+from .messaging_endpoints.selective_consumer import SelectiveConsumer
 from .ptypes import Ptypes
 
 __all__ = [

@@ -43,8 +43,8 @@ def test__pokeman_composite_connection(poker):
 
 
 def test_basic_message_construction_coating(poker):
-    from pokeman.coatings import BasicMessage
-    from pokeman.coatings import Ptypes
+    from pokeman import BasicMessage
+    from pokeman import Ptypes
     from pokeman import Exchange, RoutingKey, Queue
 
     # exchange = Exchange(exchange_name="my_exchange", exchange_type="direct")
@@ -65,8 +65,8 @@ def test_basic_message_construction_coating(poker):
     poker.stop()
 
 # def test_basic_messaging_endpoint_selective_consumer(poker):
-#     from pokeman.coatings import BasicMessageConsumer
-#     from pokeman.coatings import Ptypes
+#     from pokeman import BasicMessageConsumer
+#     from pokeman import Ptypes
 #     from pokeman import Exchange, Queue
 
 

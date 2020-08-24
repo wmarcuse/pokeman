@@ -9,8 +9,9 @@ with open('pokeman/__init__.py', 'r') as f:
 with open('README.rst', 'r') as f:
     long_description = f.read()
 
-with open('requirements.txt') as f:
-    required = f.read().splitlines()
+required = [
+    'pika'
+]
 
 setup(
     name='pokeman',
@@ -20,7 +21,7 @@ setup(
     maintainer='Wolf Marcuse',
     maintainer_email='wmarcuse@gmail.com',
     url='https://github.com/wmarcuse/pokeman',
-    packages=find_packages(include=['pokeman']),
+    packages=find_packages('.'),
     license='BSD',
     install_requires=required,
     package_data={'': ['LICENSE', 'README.rst']},
